@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   newGame, execute, siltPhase, regrowPhase, upkeepPhase, score, seatOrder,
-  buildTargets, dredgeTargets, shipRoutes, shipOptions, canReachMouth,
+  buildTargets, dredgeTargets, shipRoutes, shipOptions, canReachMouth, startValue,
   buildCost, TUNING, ACTIONS,
 } from './engine.js';
 import { CHANNELS, MOUTHS, NODES, chKey, buildIndex, NODE_BY_ID } from './graph.js';
@@ -65,6 +65,37 @@ describe('setup', () => {
     expect(all.length).toBe(4);
     expect(new Set(all).size).toBe(4);
     for (const s of all) expect(NODE_BY_ID[s].tier).toBe(3);
+  });
+
+  it('does not hand any fixed seat the same opening node every game', () => {
+    // Regression: the old i*2 stride gave seat 0 M1 (one route, one mouth) and
+    // seat 1 M3 (all three mouths) in EVERY game — mirror matches ran 11%/92%.
+    const seen = [new Set(), new Set(), new Set(), new Set()];
+    for (let s = 0; s < 40; s++) {
+      newGame(4, 1000 + s).players.forEach((p, i) => seen[i].add(p.stations[0]));
+    }
+    for (const s of seen) expect(s.size).toBeGreaterThan(1);
+  });
+
+  it('varies the opening draft order across seeds', () => {
+    const orders = new Set();
+    for (let s = 0; s < 40; s++) orders.add(newGame(4, 2000 + s).draftOrder.join(''));
+    expect(orders.size).toBeGreaterThan(1);
+  });
+
+  it('makes whoever drafted first resolve last in round 1', () => {
+    for (let s = 0; s < 20; s++) {
+      const g = newGame(4, 3000 + s);
+      expect(g.firstPlayer).toBe(g.draftOrder[g.draftOrder.length - 1]);
+      expect(seatOrder(g)[0]).toBe(g.firstPlayer);
+    }
+  });
+
+  it('never drafts the same node twice', () => {
+    for (let s = 0; s < 20; s++) {
+      const all = newGame(4, 4000 + s).players.map(p => p.stations[0]);
+      expect(new Set(all).size).toBe(all.length);
+    }
   });
 
   it('stocks non-mouth nodes and leaves mouths empty', () => {
@@ -218,6 +249,112 @@ describe('dredge', () => {
     g.depth[k] = 1; p.coins = 0;
     execute(g, 0, 'dredge', { channel: k }, noClaim());
     expect(g.depth[k]).toBe(1);
+  });
+});
+
+describe('dredging rights', () => {
+  let g, p, k;
+  beforeEach(() => { g = newGame(3, 250); p = g.players[0]; k = Object.keys(g.depth)[0]; });
+
+  it('starts with every channel unowned', () => {
+    expect(Object.values(g.rights).every(r => r === null)).toBe(true);
+  });
+
+  it('claims the channel for the dredger', () => {
+    g.depth[k] = 1;
+    execute(g, 0, 'dredge', { channel: k }, noClaim());
+    expect(g.rights[k]).toBe(0);
+  });
+
+  it('transfers rights when another player dredges it', () => {
+    g.depth[k] = 1;
+    execute(g, 0, 'dredge', { channel: k }, noClaim());
+    g.depth[k] = 1;
+    execute(g, 1, 'dredge', { channel: k }, noClaim());
+    expect(g.rights[k]).toBe(1);
+  });
+
+  it('does not claim on a fizzled dredge', () => {
+    g.depth[k] = 0;                       // SILTED, cannot dredge
+    execute(g, 0, 'dredge', { channel: k }, noClaim());
+    expect(g.rights[k]).toBeNull();
+  });
+
+  it('pays the holder when someone else ships through', () => {
+    const q = g.players[1];
+    const o = shipOptions(g, q)[0];
+    for (const key of o.path) g.rights[key] = 0;
+    const mine = p.coins, theirs = q.coins;
+    execute(g, 1, 'ship', { option: o }, noClaim());
+    expect(p.coins).toBe(mine + o.path.length * TUNING.tollPerShip);
+    expect(q.coins).toBeLessThan(theirs + o.cubes * TUNING.shipPerCube + o.path.length * TUNING.shipPerChannel);
+  });
+
+  it('charges no toll to the holder shipping their own channel', () => {
+    const o = shipOptions(g, p)[0];
+    for (const key of o.path) g.rights[key] = 0;
+    const before = p.coins;
+    execute(g, 0, 'ship', { option: o }, noClaim());
+    expect(p.coins).toBe(before + o.cubes * TUNING.shipPerCube + o.path.length * TUNING.shipPerChannel);
+  });
+
+  it('never drives a shipper below zero paying tolls', () => {
+    const q = g.players[1];
+    const o = shipOptions(g, q)[0];
+    for (const key of o.path) g.rights[key] = 0;
+    q.coins = 0;
+    execute(g, 1, 'ship', { option: o }, noClaim());
+    expect(q.coins).toBeGreaterThanOrEqual(0);
+  });
+
+  it('releases rights when the channel silts out', () => {
+    g.rights[k] = 0;
+    g.depth[k] = 1;
+    g.shippedThisRound = new Set([k]);
+    siltPhase(g);
+    expect(g.depth[k]).toBe(0);
+    expect(g.rights[k]).toBeNull();
+  });
+
+  it('scores held channels only at depth >= 2', () => {
+    const keys = Object.keys(g.depth);
+    g.rights[keys[0]] = 0; g.depth[keys[0]] = 3;
+    g.rights[keys[1]] = 0; g.depth[keys[1]] = 1;   // too shallow to score
+    const s = score(g);
+    expect(s[0].heldCount).toBe(1);
+    expect(s[0].held).toBe(TUNING.rightsVP);
+  });
+
+  it('can be switched off entirely', () => {
+    const saved = TUNING.rightsEnabled;
+    TUNING.rightsEnabled = false;
+    g.depth[k] = 1;
+    execute(g, 0, 'dredge', { channel: k }, noClaim());
+    expect(g.rights[k]).toBeNull();
+    expect(score(g)[0].held).toBe(0);
+    TUNING.rightsEnabled = saved;
+  });
+});
+
+describe('station yield', () => {
+  it('regrows cubes on your own stations', () => {
+    const g = newGame(3, 260), p = g.players[0];
+    g.cubes[p.stations[0]] = 0;
+    regrowPhase(g);
+    expect(g.cubes[p.stations[0]]).toBe(TUNING.stationYield);
+  });
+
+  it('does not exceed the node cap', () => {
+    const g = newGame(3, 261), p = g.players[0];
+    g.cubes[p.stations[0]] = TUNING.cubesPerNode;
+    regrowPhase(g);
+    expect(g.cubes[p.stations[0]]).toBe(TUNING.cubesPerNode);
+  });
+
+  it('leaves mouths empty', () => {
+    const g = newGame(3, 262);
+    regrowPhase(g);
+    for (const m of MOUTHS) expect(g.cubes[m]).toBe(0);
   });
 });
 
@@ -539,10 +676,12 @@ describe('scoring', () => {
 
   it('counts live stations only above the depth threshold', () => {
     const g = newGame(3, 1102);
-    for (const k of Object.keys(g.depth)) g.depth[k] = 1;   // navigable but not "live"
-    const s = score(g);
-    expect(s[0].live).toBe(0);
-    expect(s[0].network).toBe(g.players[0].stations.length * TUNING.vpPerStation);
+    // Just below the threshold: nothing qualifies.
+    for (const k of Object.keys(g.depth)) g.depth[k] = TUNING.liveDepthMin - 1;
+    expect(score(g)[0].live).toBe(0);
+    // At the threshold: the starting station qualifies.
+    for (const k of Object.keys(g.depth)) g.depth[k] = TUNING.liveDepthMin;
+    expect(score(g)[0].live).toBeGreaterThan(0);
   });
 
   it('penalises silted channels adjacent to your stations', () => {
@@ -564,6 +703,47 @@ describe('scoring', () => {
     for (const s of score(g)) {
       expect(s.total).toBe(s.contracts + s.mouth + s.network + s.coin + s.silt);
     }
+  });
+});
+
+describe('seat fairness', () => {
+  // The headline bug of the tuning pass: a mirror match ran 11%/92% purely on seat,
+  // because setup handed seat 0 the worst opening node and seat 1 the best.
+  it('deals equal starting contract value to every seat', () => {
+    const tot = [0, 0, 0, 0];
+    const N = 200;
+    for (let s = 0; s < N; s++) {
+      newGame(4, 6000 + s).players.forEach((p, i) => {
+        tot[i] += p.contracts.reduce((a, c) => a + c.vp, 0);
+      });
+    }
+    const avg = tot.map(t => t / N);
+    expect(Math.max(...avg) - Math.min(...avg)).toBeLessThan(2);
+  });
+
+  it('spreads opening node quality evenly across seats', () => {
+    const idx = buildIndex();
+    const tot = [0, 0, 0, 0];
+    const N = 200;
+    for (let s = 0; s < N; s++) {
+      newGame(4, 7000 + s).players.forEach((p, i) => {
+        tot[i] += startValue(p.stations[0], idx, null);
+      });
+    }
+    const avg = tot.map(t => t / N);
+    // Any systematic seat advantage in opening position shows up here.
+    expect(Math.max(...avg) - Math.min(...avg)).toBeLessThan(4);
+  });
+
+  it('gives every seat a turn at leading round 1', () => {
+    const leads = new Set();
+    for (let s = 0; s < 60; s++) leads.add(newGame(4, 8000 + s).firstPlayer);
+    expect(leads.size).toBe(4);
+  });
+
+  it('gives no seat a starting coin advantage', () => {
+    const g = newGame(4, 9000);
+    expect(new Set(g.players.map(p => p.coins)).size).toBe(1);
   });
 });
 

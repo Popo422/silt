@@ -5,7 +5,11 @@ export const TUNING = {
   rounds: 8,
   startCoins: 8,
   cubesPerNode: 4,          // was 3 — board went dry by R5
-  regrowPerRound: 1,        // NEW: one upstream node refills each round
+  regrowPerRound: 1,        // one upstream node refills each round
+  stationYield: 1,          // each of YOUR stations regrows this much per round.
+                            // Without it, expansion never repays its escalating cost:
+                            // a station dries after 2 shipments and 12 of 16 action
+                            // slots go idle, so passive play beat every active line.
   freeStations: 4,          // was 3 — upkeep was evicting stations, networks shrank
   upkeepPerStation: 1,
   buildBase: 1,             // was 2 — Build was strictly worse than Ship
@@ -18,13 +22,19 @@ export const TUNING = {
   dredgeAmount: 1,          // was 2 — one dredge undid two ships; silt never accrued
   dredgeCoins: 1,           // NEW: dredging costs money, so it's a genuine trade
   maxDepth: 3,
+  siltPerShip: 1,           // depth lost by each channel that carried cargo
+  siltDownstream: false,    // rejected in sweep A: severs the delta, 0% live stations
+  tollPerShip: 2,           // coins paid to a channel's rights-holder when others ship through
+  rightsEnabled: true,      // dredging claims a channel; others pay you to use it
+  rightsVP: 2,              // VP per channel you still hold at depth>=2 at game end
+  contractScale: 2,         // contracts sat at ~22% of score; target is ~45%
   collisionPayout: 3,
   handLimit: 4,
   vpPerCoins: 5,
-  mouthVP: [8, 4, 1],       // was 6/3/1 — raise the contested-delivery stakes
+  mouthVP: [12, 6, 2],      // raise the contested-delivery stakes
   vpPerStation: 0,          // raw disc count shouldn't score; only working routes do
   vpLiveStation: 2,         // a station that still reaches the sea is the reward
-  liveDepthMin: 2,
+  liveDepthMin: 1,        // at 2, ~0-21% of stations qualified; the bonus was dead weight
   siltedPenaltyVP: 1,       // NEW: -1vp per SILTED channel adjacent to your stations
 };
 
@@ -64,12 +74,30 @@ function shuffle(arr, rand) {
   return a;
 }
 
+// Rank a candidate opening node: how many mouths it can reach, and how many
+// channels run through it. Used by the opening draft and exposed so the UI can
+// show the same ranking to a human drafter.
+export function startValue(id, idx, depth) {
+  const seen = new Set([id]), stack = [id], mouths = new Set();
+  while (stack.length) {
+    const n = stack.pop();
+    if (MOUTHS.includes(n)) { mouths.add(n); continue; }
+    for (const nx of idx.out[n]) if (!seen.has(nx)) { seen.add(nx); stack.push(nx); }
+  }
+  const degree = idx.out[id].length + idx.inn[id].length;
+  return mouths.size * 10 + degree;
+}
+
+export function pickStart(pool, idx, depth) {
+  return [...pool].sort((a, b) => startValue(b, idx, depth) - startValue(a, idx, depth))[0];
+}
+
 export function newGame(playerCount = 3, seed = 12345) {
   const rand = rng(seed);
   const { out, inn } = buildIndex();
 
-  const depth = {};
-  for (const [a, b] of CHANNELS) depth[chKey(a, b)] = TUNING.maxDepth;
+  const depth = {}, rights = {};
+  for (const [a, b] of CHANNELS) { depth[chKey(a, b)] = TUNING.maxDepth; rights[chKey(a, b)] = null; }
 
   const cubes = {};
   for (const n of NODES) cubes[n.id] = MOUTHS.includes(n.id) ? 0 : TUNING.cubesPerNode;
@@ -91,18 +119,27 @@ export function newGame(playerCount = 3, seed = 12345) {
       program: [null, null],
     });
   }
-  // Reverse seat order placement, spread across mid tier.
-  for (let i = playerCount - 1; i >= 0; i--) {
-    players[i].stations.push(midTier[(i * 2) % midTier.length]);
+  // Opening draft. Pick order is randomised per game, NOT tied to seat index: any
+  // fixed order just relocates the bias (the old i*2 stride gave seat 1 the worst
+  // node and seat 2 the best; drafting high-seat-first simply flipped it). Mirror
+  // matches ran 11%/92% on seat alone until this was randomised.
+  const draftPool = [...midTier];
+  const draftOrder = shuffle(players.map((_, i) => i), rand);
+  for (const pi of draftOrder) {
+    const pick = pickStart(draftPool, { out, inn }, depth);
+    draftPool.splice(draftPool.indexOf(pick), 1);
+    players[pi].stations.push(pick);
   }
+  // Whoever drafted first pays for it by resolving last in round 1.
+  const firstPlayer = draftOrder[draftOrder.length - 1];
   for (const m of MOUTHS) for (const p of players) {
     p.delivered[m] = { timber: 0, grain: 0, salt: 0 };
     p.pool[m]      = { timber: 0, grain: 0, salt: 0 };
   }
 
   return {
-    round: 1, phase: 'program', slot: 0, firstPlayer: 0,
-    depth, cubes, players, deck, out, inn,
+    round: 1, phase: 'program', slot: 0, firstPlayer, draftOrder,
+    depth, rights, cubes, players, deck, out, inn,
     log: [], shippedThisRound: new Set(), seed, rand,
   };
 }
@@ -225,7 +262,9 @@ export function execute(g, pi, action, choice, claimed) {
       if (p.coins < TUNING.dredgeCoins) { g.log.push(`${p.name} cannot afford dredge`); return; }
       p.coins -= TUNING.dredgeCoins;
       g.depth[k] = Math.min(TUNING.maxDepth, g.depth[k] + TUNING.dredgeAmount);
-      g.log.push(`${p.name} dredges ${k} to ${g.depth[k]} (-${TUNING.dredgeCoins}c)`);
+      let claim = '';
+      if (TUNING.rightsEnabled && g.rights[k] !== pi) { g.rights[k] = pi; claim = ' — claims rights'; }
+      g.log.push(`${p.name} dredges ${k} to ${g.depth[k]} (-${TUNING.dredgeCoins}c)${claim}`);
       break;
     }
     case 'build': {
@@ -255,7 +294,21 @@ export function execute(g, pi, action, choice, claimed) {
       const pay = n * TUNING.shipPerCube + o.path.length * TUNING.shipPerChannel;
       p.coins += pay;
       o.path.forEach(k => g.shippedThisRound.add(k));
-      g.log.push(`${p.name} ships ${n} ${o.good} -> ${o.mouth} (+${pay}c)`);
+
+      // Tolls: dredging is an investment, not charity. Others pay to use what you maintain.
+      let tolls = 0;
+      if (TUNING.rightsEnabled) {
+        for (const k of o.path) {
+          const holder = g.rights[k];
+          if (holder === null || holder === pi) continue;
+          const owed = Math.min(TUNING.tollPerShip, p.coins);
+          if (owed <= 0) continue;
+          p.coins -= owed;
+          g.players[holder].coins += owed;
+          tolls += owed;
+        }
+      }
+      g.log.push(`${p.name} ships ${n} ${o.good} -> ${o.mouth} (+${pay}c${tolls ? `, -${tolls}c tolls` : ''})`);
       tryContracts(g, p);
       break;
     }
@@ -275,8 +328,19 @@ export function execute(g, pi, action, choice, claimed) {
 
 export function siltPhase(g) {
   let n = 0;
-  for (const k of g.shippedThisRound) {
-    if (g.depth[k] > 0) { g.depth[k] -= 1; n++; }
+  const hit = new Set(g.shippedThisRound);
+  // Optional: sediment carries past the node it settled at, choking the next reach.
+  if (TUNING.siltDownstream) {
+    for (const k of g.shippedThisRound) {
+      const to = k.split('>')[1];
+      for (const nx of (g.out[to] ?? [])) hit.add(chKey(to, nx));
+    }
+  }
+  for (const k of hit) {
+    if (g.depth[k] > 0) {
+      g.depth[k] = Math.max(0, g.depth[k] - TUNING.siltPerShip); n++;
+      if (g.depth[k] === 0) g.rights[k] = null;   // nobody owns a dead channel
+    }
   }
   g.log.push(`Silt: ${n} channels drop`);
   const gone = Object.entries(g.depth).filter(([, v]) => v === 0).length;
@@ -287,11 +351,23 @@ export function siltPhase(g) {
 // The delta keeps producing, slowly. Refills the emptiest non-mouth nodes so the
 // board can't go globally dry mid-game (observed dead round at R5 pre-fix).
 export function regrowPhase(g) {
-  const pool = NODES.filter(n => !MOUTHS.includes(n.id) && g.cubes[n.id] < TUNING.cubesPerNode)
+  // Your stations work their node: a developed site keeps producing.
+  if (TUNING.stationYield > 0) {
+    for (const p of g.players) {
+      for (const s of p.stations) {
+        if (g.cubes[s] < TUNING.cubesPerNode) {
+          g.cubes[s] = Math.min(TUNING.cubesPerNode, g.cubes[s] + TUNING.stationYield);
+        }
+      }
+    }
+  }
+  // Plus a little wild regrowth on the emptiest unclaimed node.
+  const owned = new Set(g.players.flatMap(p => p.stations));
+  const pool = NODES.filter(n => !MOUTHS.includes(n.id) && !owned.has(n.id)
+    && g.cubes[n.id] < TUNING.cubesPerNode)
     .sort((a, b) => g.cubes[a.id] - g.cubes[b.id]);
   for (let i = 0; i < TUNING.regrowPerRound && i < pool.length; i++) {
     g.cubes[pool[i].id] += 1;
-    g.log.push(`${pool[i].id} regrows a cube`);
   }
 }
 
@@ -321,7 +397,7 @@ export function canReachMouth(g, from, minDepth) {
 
 export function score(g) {
   return g.players.map(p => {
-    const contracts = p.done.reduce((s, c) => s + c.vp, 0);
+    const contracts = Math.round(p.done.reduce((s, c) => s + c.vp, 0) * TUNING.contractScale);
     let mouth = 0;
     for (const m of MOUTHS) {
       const tally = g.players.map(x => GOODS.reduce((s, gd) => s + x.delivered[m][gd], 0));
@@ -342,7 +418,12 @@ export function score(g) {
       for (const n of g.inn[s]) if (g.depth[chKey(n, s)] === 0) dead.add(chKey(n, s));
     }
     const silt = -dead.size * TUNING.siltedPenaltyVP;
-    return { name: p.name, contracts, mouth, network, coin, silt, live, stations: p.stations.length,
-             total: contracts + mouth + network + coin + silt };
+    // Rights only score if you kept the channel navigable — abandoned tolls are worth nothing.
+    const heldCount = TUNING.rightsEnabled
+      ? Object.keys(g.rights).filter(k => g.rights[k] === p.idx && g.depth[k] >= 2).length : 0;
+    const held = heldCount * TUNING.rightsVP;
+    return { name: p.name, contracts, mouth, network, coin, silt, held, heldCount,
+             live, stations: p.stations.length,
+             total: contracts + mouth + network + coin + silt + held };
   });
 }

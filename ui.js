@@ -41,6 +41,7 @@ function drawBoard() {
   const el = (t, a) => { const e = document.createElementNS(ns, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
 
   // channels
+  const tollMarks = [];
   for (const [a, b] of CHANNELS) {
     const k = chKey(a, b), d = g.depth[k];
     const A = NODE_BY_ID[a], B = NODE_BY_ID[b];
@@ -51,8 +52,10 @@ function drawBoard() {
       'stroke-linecap': 'round',
       'stroke-dasharray': d === 0 ? '1.1 1.1' : '',
       'data-ch': k, 'data-depth': d,
+      'data-rights': g.rights[k] ?? '',
       class: 'ch',
     });
+    if (g.rights[k] !== null && d > 0) tollMarks.push([A, B, g.rights[k]]);
     if (pendingAction === 'dredge' && d > 0 && d < TUNING.maxDepth) {
       line.setAttribute('stroke', '#e0a458');
       line.style.cursor = 'pointer';
@@ -64,6 +67,14 @@ function drawBoard() {
       continue;
     }
     svg.appendChild(line);
+  }
+
+  // Toll markers ride on top of the channels they own.
+  for (const [A, B, owner] of tollMarks) {
+    svg.appendChild(el('circle', {
+      cx: (A.x + B.x) / 2, cy: (A.y + B.y) / 2, r: 0.85,
+      fill: PC[owner], stroke: '#0d1518', 'stroke-width': 0.25,
+    }));
   }
 
   // ship-route highlight
@@ -140,7 +151,7 @@ function drawBoard() {
 const ACT_DESC = () => {
   const p = g.players[HUMAN];
   return {
-    dredge: `+${TUNING.dredgeAmount} depth · ${TUNING.dredgeCoins}c`,
+    dredge: `+${TUNING.dredgeAmount} depth · ${TUNING.dredgeCoins}c · claims toll`,
     build: `new station · ${buildCost(p)}c`,
     ship: `≤${TUNING.shipCubesMax} cubes to sea`,
     survey: `+${TUNING.surveyCoins}c · draw ${TUNING.surveyDraw} keep 1`,
@@ -287,10 +298,11 @@ function finish() {
   const s = score(g).map((x, i) => ({ ...x, i }));
   const best = Math.max(...s.map(x => x.total));
   $('final').innerHTML = `<table>
-    <tr><th>Player</th><th>Contr</th><th>Mouth</th><th>Net</th><th>Coin</th><th>Silt</th><th>Total</th></tr>
+    <tr><th>Player</th><th>Contr</th><th>Mouth</th><th>Net</th><th>Rights</th><th>Coin</th><th>Silt</th><th>Total</th></tr>
     ${s.map(x => `<tr class="${x.total === best ? 'win' : ''}">
       <td>${g.players[x.i].name}</td><td>${x.contracts}</td><td>${x.mouth}</td>
-      <td>${x.network}</td><td>${x.coin}</td><td>${x.silt}</td><td>${x.total}</td></tr>`).join('')}
+      <td>${x.network}</td><td>${x.held}</td><td>${x.coin}</td><td>${x.silt}</td>
+      <td>${x.total}</td></tr>`).join('')}
   </table>`;
   $('ov').classList.add('on');
   $('ph').textContent = 'Game over';

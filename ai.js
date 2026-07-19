@@ -5,15 +5,29 @@ import { chKey, NODE_BY_ID, MOUTHS } from './graph.js';
 
 // Pick the action pair for the round, then per-slot choices are made live.
 export const STRATEGIES = {
-  // Balanced: ships when profitable, dredges its own lifelines, builds when rich.
+  // Balanced: expand early, ship always, dredge only lifelines that are actually dying.
+  // (Previous version gated Build behind coins >= cost+2 and won 0% everywhere — it
+  // never expanded, which made it a useless yardstick rather than a fair baseline.)
   balanced(g, p) {
     const opts = shipOptions(g, p);
-    const fragile = myFragileChannels(g, p);
+    const dying = myFragileChannels(g, p).filter(k => g.depth[k] === 1);
+    const canBuild = p.coins >= buildCost(p) && buildTargets(g, p).length;
     const prog = [];
+
+    // Early game: land grabs compound. Prioritise them.
+    if (canBuild && p.stations.length < 4 && g.round <= 5) prog.push('build');
     if (opts.length) prog.push('ship');
-    if (fragile.length && prog.length < 2) prog.push('dredge');
-    if (p.coins >= buildCost(p) + 2 && prog.length < 2) prog.push('build');
-    while (prog.length < 2) prog.push(opts.length > 1 ? 'ship' : 'survey');
+    if (dying.length && prog.length < 2) prog.push('dredge');
+    if (canBuild && prog.length < 2) prog.push('build');
+    // Only survey when the hand is genuinely thin — it was burning 42% of actions
+    // on cards it could never fulfil, and fizzling the rest.
+    while (prog.length < 2) {
+      if (opts.length > prog.filter(a => a === 'ship').length) prog.push('ship');
+      else if (p.contracts.length < 2) prog.push('survey');
+      else if (dredgeTargets(g).length && p.coins >= TUNING.dredgeCoins) prog.push('dredge');
+      else if (canBuild) prog.push('build');
+      else prog.push('survey');
+    }
     return prog.slice(0, 2);
   },
 
@@ -50,6 +64,19 @@ export const STRATEGIES = {
     return prog.slice(0, 2);
   },
 
+  // Tollkeeper: treats dredging as investment. Claims high-traffic channels and
+  // lives off the tolls. Only viable if Dredging Rights actually pays.
+  tollkeeper(g, p) {
+    const opts = shipOptions(g, p);
+    const claims = claimTargets(g, p);
+    const prog = [];
+    if (claims.length && p.coins >= TUNING.dredgeCoins) prog.push('dredge');
+    if (opts.length) prog.push('ship');
+    if (prog.length < 2 && p.coins >= buildCost(p) && buildTargets(g, p).length) prog.push('build');
+    while (prog.length < 2) prog.push(claims.length ? 'dredge' : 'survey');
+    return prog.slice(0, 2);
+  },
+
   // Expander: builds relentlessly. Tests whether escalating cost is a real brake.
   expander(g, p) {
     const prog = [];
@@ -60,6 +87,26 @@ export const STRATEGIES = {
     return prog.slice(0, 2);
   },
 };
+
+// Channels worth owning: damaged (so dredging is legal), not already ours, and
+// carrying traffic other players depend on.
+function claimTargets(g, p) {
+  const traffic = channelTraffic(g, p.idx);
+  return dredgeTargets(g)
+    .filter(k => g.rights[k] !== p.idx)
+    .filter(k => traffic[k] > 0)
+    .sort((a, b) => (traffic[b] - traffic[a]) || (g.depth[a] - g.depth[b]));
+}
+
+// How many OTHER players have a plausible route through each channel.
+function channelTraffic(g, me) {
+  const t = {};
+  g.players.forEach((q, qi) => {
+    if (qi === me) return;
+    for (const o of shipOptions(g, q)) for (const k of o.path) t[k] = (t[k] || 0) + 1;
+  });
+  return t;
+}
 
 function myFragileChannels(g, p) {
   const set = new Set();
@@ -87,6 +134,10 @@ export function chooseTarget(g, p, action, strat) {
     }
     case 'dredge': {
       if (p.coins < TUNING.dredgeCoins) return null;
+      if (strat === 'tollkeeper') {
+        const c = claimTargets(g, p);
+        if (c.length) return { channel: c[0] };
+      }
       const mine = myFragileChannels(g, p);
       const pool = mine.length ? mine : dredgeTargets(g);
       if (!pool.length) return null;

@@ -161,6 +161,84 @@ test.describe('actions', () => {
   });
 });
 
+test.describe('dredging rights', () => {
+  test('starts with no channel owned', async ({ page }) => {
+    await boot(page);
+    const owned = await page.evaluate(() =>
+      Object.values(window.SILT.state().rights).filter(r => r !== null).length);
+    expect(owned).toBe(0);
+  });
+
+  test('claims a channel when you dredge and renders a toll marker', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = window.SILT.state();
+      Object.keys(g.depth).slice(0, 6).forEach(k => { g.depth[k] = 1; });
+    });
+    await page.evaluate(() => window.SILT.program('dredge', 'survey'));
+    await page.evaluate(() => window.SILT.commit());
+    await page.evaluate(() => window.SILT.autoResolve());
+    const owned = await page.evaluate(() =>
+      Object.values(window.SILT.state().rights).filter(r => r !== null).length);
+    expect(owned).toBeGreaterThan(0);
+    await expect(page.locator('line.ch[data-rights="0"]').first()).toBeAttached();
+  });
+
+  test('pays the holder when an opponent ships through', async ({ page }) => {
+    await boot(page);
+    // hand every channel to the human, then let a full round resolve
+    await page.evaluate(() => {
+      const g = window.SILT.state();
+      Object.keys(g.rights).forEach(k => { g.rights[k] = 0; });
+    });
+    const before = await page.evaluate(() => window.SILT.state().players[0].coins);
+    await page.evaluate(() => window.SILT.program('survey', 'survey'));
+    await page.evaluate(() => window.SILT.commit());
+    const after = await page.evaluate(() => window.SILT.state().players[0].coins);
+    // survey alone pays 3+3; anything above that is toll income from the bots
+    expect(after).toBeGreaterThan(before + 6);
+  });
+
+  test('releases rights when a channel silts out', async ({ page }) => {
+    await boot(page);
+    const k = await page.evaluate(() => {
+      const g = window.SILT.state();
+      const key = Object.keys(g.depth)[0];
+      g.depth[key] = 1; g.rights[key] = 0; g.shippedThisRound = new Set([key]);
+      return key;
+    });
+    await page.evaluate(() => window.SILT.program('survey', 'survey'));
+    await page.evaluate(() => window.SILT.commit());
+    const st = await page.evaluate((key) => {
+      const g = window.SILT.state();
+      return { depth: g.depth[key], rights: g.rights[key] };
+    }, k);
+    expect(st.depth).toBe(0);
+    expect(st.rights).toBeNull();
+  });
+});
+
+test.describe('opening draft', () => {
+  test('gives every player a distinct mid-tier start', async ({ page }) => {
+    await boot(page);
+    const starts = await page.evaluate(() =>
+      window.SILT.state().players.map(p => p.stations[0]));
+    expect(new Set(starts).size).toBe(4);
+  });
+
+  test('does not pin any seat to one node across seeds', async ({ page }) => {
+    const seen = [new Set(), new Set(), new Set(), new Set()];
+    for (const seed of [11, 22, 33, 44, 55, 66]) {
+      await boot(page, seed);
+      const starts = await page.evaluate(() =>
+        window.SILT.state().players.map(p => p.stations[0]));
+      starts.forEach((s, i) => seen[i].add(s));
+    }
+    // at least one seat must vary — a fixed assignment would give all size 1
+    expect(Math.max(...seen.map(s => s.size))).toBeGreaterThan(1);
+  });
+});
+
 test.describe('round flow', () => {
   test('advances the round counter after committing', async ({ page }) => {
     await boot(page);
@@ -221,8 +299,8 @@ test.describe('full game', () => {
     await playFullGame(page);
     const rows = await page.locator('#final tr').evaluateAll(trs =>
       trs.slice(1).map(tr => [...tr.querySelectorAll('td')].slice(1).map(td => +td.textContent)));
-    for (const [c, m, n, coin, silt, total] of rows) {
-      expect(c + m + n + coin + silt).toBe(total);
+    for (const [c, m, n, held, coin, silt, total] of rows) {
+      expect(c + m + n + held + coin + silt).toBe(total);
     }
   });
 
