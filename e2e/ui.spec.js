@@ -176,11 +176,29 @@ test.describe('assets', () => {
 });
 
 test.describe('tutorial', () => {
-  test('starts from the guided button and shows step 1', async ({ page }) => {
+  // Navigate by step ID, never by index. These tests used to hardcode "Step 4 of
+  // 9" and "click Next three times", so adding an orientation step broke five of
+  // them at once — the tests were pinned to the script's shape rather than its
+  // behaviour.
+  const advanceTo = async (page, id) => {
+    for (let i = 0; i < 30; i++) {
+      const t = await page.evaluate(() => window.SILT.tutorial());
+      if (!t?.active) throw new Error(`tutorial ended before reaching ${id}`);
+      if (t.id === id) return t;
+      if (await page.locator('#tutNext').isVisible()) await page.locator('#tutNext').click();
+      else await page.locator('#tutSkipStep').click();
+    }
+    throw new Error(`never reached step ${id}`);
+  };
+
+  test('starts from the guided button on the first step', async ({ page }) => {
     await open(page);
     await page.locator('#btnTutorial').click();
     await expect(page.locator('#tut')).toBeVisible();
-    await expect(page.locator('#tutStep')).toHaveText('Step 1 of 9');
+    const t = await page.evaluate(() => window.SILT.tutorial());
+    expect(t.i).toBe(1);
+    expect(t.id).toBe('welcome');
+    await expect(page.locator('#tutStep')).toContainText(`of ${t.n}`);
   });
 
   test('does not appear in a normal game', async ({ page }) => {
@@ -192,38 +210,38 @@ test.describe('tutorial', () => {
   test('advances through untimed steps with Next', async ({ page }) => {
     await open(page);
     await page.locator('#btnTutorial').click();
+    const before = await page.evaluate(() => window.SILT.tutorial());
     await page.locator('#tutNext').click();
-    await expect(page.locator('#tutStep')).toHaveText('Step 2 of 9');
-    await page.locator('#tutNext').click();
-    await expect(page.locator('#tutStep')).toHaveText('Step 3 of 9');
+    const after = await page.evaluate(() => window.SILT.tutorial());
+    expect(after.i).toBe(before.i + 1);
+    expect(after.id).not.toBe(before.id);
   });
 
   test('gates on a real action and hides Next while waiting', async ({ page }) => {
     await open(page);
     await page.locator('#btnTutorial').click();
-    for (let i = 0; i < 3; i++) await page.locator('#tutNext').click();
-    await expect(page.locator('#tutStep')).toHaveText('Step 4 of 9');
+    await advanceTo(page, 'pick-ship');
     await expect(page.locator('#tutNext')).toBeHidden();
     // A gated step tells you what to do and offers an escape hatch.
     await expect(page.locator('#tutWait')).not.toBeEmpty();
     await expect(page.locator('#tutSkipStep')).toBeVisible();
-    // The gate is SHIP specifically — a different action must not advance it.
-    await page.locator('[data-act="survey"]').click();
-    await expect(page.locator('#tutStep')).toHaveText('Step 4 of 9');
+    // Other actions are not merely ignored — they are not clickable at all.
+    await expect(page.locator('[data-act="survey"]')).toBeDisabled();
+    expect((await page.evaluate(() => window.SILT.tutorial())).id).toBe('pick-ship');
   });
 
   test('advances when the gated action is performed', async ({ page }) => {
     await open(page);
     await page.locator('#btnTutorial').click();
-    for (let i = 0; i < 3; i++) await page.locator('#tutNext').click();
+    await advanceTo(page, 'pick-ship');
     await page.locator('[data-act="ship"]').click();
-    await expect(page.locator('#tutStep')).toHaveText('Step 5 of 9');
+    expect((await page.evaluate(() => window.SILT.tutorial())).id).toBe('pick-second');
   });
 
   test('highlights the element it is talking about', async ({ page }) => {
     await open(page);
     await page.locator('#btnTutorial').click();
-    for (let i = 0; i < 3; i++) await page.locator('#tutNext').click();
+    await advanceTo(page, 'pick-ship');
     await expect(page.locator('[data-act="ship"]')).toHaveClass(/uiPulse/);
   });
 

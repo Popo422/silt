@@ -99,12 +99,15 @@ function buildMenu() {
     const n = config.players - 1;
     $('botRows').innerHTML = Array.from({ length: n }, (_, i) => `
       <div class="botRow">
-        <span class="dot" style="background:${PC[i + 1]}"></span>
-        <span class="nm">P${i + 2}</span>
-        <select data-bot="${i}">
-          ${BOT_KEYS.map(k =>
-            `<option value="${k}" ${config.bots[i] === k ? 'selected' : ''}>${botName(k)}</option>`).join('')}
-        </select>
+        <div class="botTop">
+          <span class="dot" style="background:${PC[i + 1]}"></span>
+          <select data-bot="${i}">
+            ${BOT_KEYS.map(k =>
+              `<option value="${k}" ${config.bots[i] === k ? 'selected' : ''}>${botName(k)}</option>`).join('')}
+          </select>
+        </div>
+        <!-- The description used to be squeezed into a 150px right-aligned column
+             and truncated. Given its own line it can actually be read. -->
         <span class="desc" data-desc="${i}">${botDesc(config.bots[i])}</span>
       </div>`).join('');
     for (const sel of document.querySelectorAll('[data-bot]')) {
@@ -758,8 +761,15 @@ function render() {
 
   const d = actDesc();
   const tips = actTip();
+  // During a gated tutorial step, only the action being taught is live. Letting a
+  // first-time player pick something else strands them: the step never completes,
+  // the hint keeps asking for an action they already spent a slot on, and the only
+  // way out is the skip button. Guidance that can be wandered off is not guidance.
+  const want = tut?.active ? tut.step()?.requires : null;
   $('acts').innerHTML = ['dredge', 'build', 'ship', 'survey'].map(a => `
-    <button class="act" data-act="${a}" ${pendingAction ? 'disabled' : ''}
+    <button class="act${want && want !== a ? ' dimmed' : ''}"
+            data-act="${a}"
+            ${pendingAction || (want && want !== a) ? 'disabled' : ''}
             data-tip="${esc(tips[a])}"
             data-tip-title="${esc(T.actions[a].name)}${
               T.actions[a].gloss ? ` — ${esc(T.actions[a].gloss)}` : ''}">
@@ -857,7 +867,15 @@ function renderTutorial() {
 
   const hl = s.highlight?.();
   if (hl?.kind === 'ui') document.querySelector(hl.sel)?.classList.add('uiPulse');
-  if (hl?.kind === 'legend') $('legendPane')?.classList.add('uiPulse');
+  if (hl?.kind === 'legend') {
+    // Open it first: pulsing a collapsed panel points at nothing.
+    $('legendPane')?.setAttribute('open', '');
+    $('legendPane')?.classList.add('uiPulse');
+  }
+  // Orientation steps name a whole region of the screen before asking for
+  // anything — the old tutorial jumped straight to "click SHIP" without ever
+  // saying which half of the window was the map.
+  if (hl?.kind === 'board') $('board')?.classList.add('uiPulse');
 }
 
 function setSlot(a) {

@@ -246,3 +246,87 @@ test.describe('real playthrough on a phone', () => {
     expect(errors).toEqual([]);
   });
 });
+
+// The tutorial used to be a slideshow: 9 steps, only 3 of which asked for
+// anything, and the one "do something" step said "anything works" — which teaches
+// nothing on the single turn a new player is really paying attention. These lock
+// in that it actually guides.
+test.describe('the tutorial guides rather than narrates', () => {
+  const tutorialState = (page) => page.evaluate(() => window.SILT.tutorial());
+  const liveActions = (page) => page.evaluate(() =>
+    [...document.querySelectorAll('.act')].filter(b => !b.disabled).map(b => b.dataset.act));
+
+  test('only the taught action is clickable on a gated step', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnTutorial').click();
+    const seen = {};
+    for (let i = 0; i < 40; i++) {
+      const t = await tutorialState(page);
+      if (!t?.active) break;
+      seen[t.id] = await liveActions(page);
+      if (await page.locator('#tutNext').isVisible()) { await page.locator('#tutNext').click(); continue; }
+      if (t.id === 'pick-ship') await page.locator('[data-act="ship"]').click();
+      else if (t.id === 'pick-second') await page.locator('[data-act="dredge"]').click();
+      else if (t.id === 'commit') {
+        const r0 = await page.evaluate(() => window.SILT.state()?.round);
+        await page.locator('#go').click();
+        for (let k = 0; k < 8; k++) { await settle(page, r0); if (!await clickTarget(page)) break; }
+      } else await page.locator('#tutSkipStep').click();
+    }
+    // The step that teaches shipping must not let you pick anything else.
+    expect(seen['pick-ship'], 'pick-ship should offer only ship').toEqual(['ship']);
+    expect(seen['pick-second'], 'pick-second should offer only dredge').toEqual(['dredge']);
+    // And once it is over, the game must be fully unlocked again.
+    expect(seen['free'].sort()).toEqual(['build', 'dredge', 'ship', 'survey']);
+  });
+
+  test('orients the player before asking for a click', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnTutorial').click();
+    const order = [];
+    for (let i = 0; i < 40; i++) {
+      const t = await tutorialState(page);
+      if (!t?.active) break;
+      order.push(t.id);
+      if (await page.locator('#tutNext').isVisible()) { await page.locator('#tutNext').click(); continue; }
+      if (t.id === 'pick-ship') await page.locator('[data-act="ship"]').click();
+      else if (t.id === 'pick-second') await page.locator('[data-act="dredge"]').click();
+      else if (t.id === 'commit') {
+        const r0 = await page.evaluate(() => window.SILT.state()?.round);
+        await page.locator('#go').click();
+        for (let k = 0; k < 8; k++) { await settle(page, r0); if (!await clickTarget(page)) break; }
+      } else await page.locator('#tutSkipStep').click();
+    }
+    // Both halves of the screen get named before the first instruction.
+    expect(order.indexOf('tour-board')).toBeGreaterThan(-1);
+    expect(order.indexOf('tour-panel')).toBeGreaterThan(-1);
+    expect(order.indexOf('tour-board')).toBeLessThan(order.indexOf('pick-ship'));
+    expect(order.indexOf('tour-panel')).toBeLessThan(order.indexOf('pick-ship'));
+    // And it reflects on the consequence after the round resolves.
+    expect(order.indexOf('read-water')).toBeGreaterThan(order.indexOf('commit'));
+    expect(order[order.length - 1]).toBe('free');
+  });
+
+  test('opens the legend before pointing at it', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnTutorial').click();
+    for (let i = 0; i < 40; i++) {
+      const t = await tutorialState(page);
+      if (!t?.active) break;
+      if (t.id === 'read-water') {
+        // Pulsing a collapsed panel points at nothing.
+        await expect(page.locator('#legendPane')).toHaveAttribute('open', '');
+        return;
+      }
+      if (await page.locator('#tutNext').isVisible()) { await page.locator('#tutNext').click(); continue; }
+      if (t.id === 'pick-ship') await page.locator('[data-act="ship"]').click();
+      else if (t.id === 'pick-second') await page.locator('[data-act="dredge"]').click();
+      else if (t.id === 'commit') {
+        const r0 = await page.evaluate(() => window.SILT.state()?.round);
+        await page.locator('#go').click();
+        for (let k = 0; k < 8; k++) { await settle(page, r0); if (!await clickTarget(page)) break; }
+      } else await page.locator('#tutSkipStep').click();
+    }
+    throw new Error('never reached the read-water step');
+  });
+});

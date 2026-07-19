@@ -336,11 +336,14 @@ test.describe('tutorial speaks the active theme', () => {
     expect(ship.title + ship.body, 'ship step must name the themed action')
       .toContain(shipBtn);
 
-    // And the second-slot step must name all three of the others.
+    // The second-slot step teaches dredge specifically. It used to list all three
+    // remaining actions and say "anything works", which taught nothing on the one
+    // turn a new player is actually paying attention — so this now asserts the
+    // named action rather than a menu of them.
     const second = steps.find(s => s.id === 'pick-second');
-    const names = await page.evaluate(() =>
-      ['dredge', 'build', 'survey'].map(k => window.SILT.theme().actions[k].name));
-    for (const n of names) expect(second.body, `must name ${n}`).toContain(n);
+    const dredge = await page.evaluate(() => window.SILT.theme().actions.dredge.name);
+    expect(second.title + second.body, 'second step must name the themed dredge action')
+      .toContain(dredge);
   });
 
   test('never uses the plain-theme action words while ANOD is active', async ({ page }) => {
@@ -360,8 +363,10 @@ test.describe('tutorial speaks the active theme', () => {
     const steps = await tourText(page);
     const all = steps.map(s => `${s.title} ${s.body}`).join(' ');
     // A foreigner has to be able to decode it: the first time an action appears
-    // it carries its English gloss in parens.
-    for (const [k, en] of [['ship', 'ship'], ['dredge', 'dredge'], ['survey', 'survey']]) {
+    // it carries its English gloss in parens. Only actions the script actually
+    // teaches — survey is no longer mentioned, since the guided round is ship
+    // plus dredge and listing the others taught nothing.
+    for (const [k, en] of [['ship', 'ship'], ['dredge', 'dredge']]) {
       const name = await page.evaluate(
         (kk) => window.SILT.theme().actions[kk].name, k);
       expect(all, `${name} needs a gloss somewhere`).toContain(`${name} (${en})`);
