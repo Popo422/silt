@@ -14,6 +14,7 @@ tutorial.js   the guided first game: a list of steps.
 rulebook.js   the rules pages, built from live TUNING.
 
 board.js      paints the SVG delta from a state snapshot.
+diagrams.js   rulebook figures, drawn with board.js's own curves and textures.
 fx.js         animates engine events on an overlay.
 panzoom.js    viewBox pan/zoom. Knows nothing about the game.
 tips.js       delegated hover help. Knows nothing about the game.
@@ -106,6 +107,10 @@ points needs a `sweep.mjs` run.
 
 **A new visual** → `board.js` if it's on the map, `fx.js` if it's a moment in
 time. Add what you need to the ctx; don't import `ui.js`.
+
+**A new rulebook figure** → `diagrams.js`, built from `board.js`'s `channelPath`
+and the same water textures. Hand-drawing a diagram is how a rulebook ends up
+showing a board the game no longer has.
 
 **A new UI panel** → if it's more than ~80 lines, it's a module. `ui.js` is 826
 lines and already too big; do not grow it.

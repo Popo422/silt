@@ -5,6 +5,7 @@
 
 import { TUNING } from './engine.js';
 import { CHANNELS } from './graph.js';
+import { figDepths, figSilt, figToll, figChoke } from './diagrams.js';
 
 const c = (T) => (T.terms.coins.name === 'ginto' ? 'g' : 'c');
 
@@ -85,23 +86,17 @@ export function pages(T) {
       title: anod ? 'Ang Tubig' : 'The Water',
       sub: 'depth, silt, and death',
       body: `
-        <p>Every channel has a depth from <b>${TUNING.maxDepth}</b> down to <b>0</b>.</p>
-        <table class="depth">
-          <tr><td><i class="d3"></i></td><td><b>3</b></td>
-            <td>${anod ? 'malalim' : 'deep'} — healthy</td></tr>
-          <tr><td><i class="d2"></i></td><td><b>2</b></td>
-            <td>worn, still fine</td></tr>
-          <tr><td><i class="d1"></i></td><td><b>1</b></td>
-            <td>${anod ? 'mababaw' : 'shallow'} — one more trip kills it</td></tr>
-          <tr><td><i class="d0"></i></td><td><b>0</b></td>
-            <td><b>${X.silted.name.toUpperCase()}</b> — gone permanently</td></tr>
-        </table>
+        <p>Every channel has a depth from <b>${TUNING.maxDepth}</b> down to <b>0</b>.
+        You can read it off the board without counting anything.</p>
+        ${figDepths(T)}
         <p>Cargo can cross any channel at depth <b>1 or more</b>. A silted channel
         blocks shipping <i>and</i> blocks building across it, so a node can be
         stranded with no route to the sea.</p>
+        ${figSilt(T)}
         <p class="warn">There are <b>${CHANNELS.length}</b> channels. Nodes at the
         edge of the delta often have only <b>one</b> route out — lose it and that
-        settlement is dead for the rest of the game.</p>`,
+        settlement is dead for the rest of the game.</p>
+        ${figChoke(T)}`,
     },
     {
       title: anod ? 'Singil' : 'Tolls',
@@ -109,6 +104,7 @@ export function pages(T) {
       body: `
         <p>Dredging is not charity. When you dredge a channel you <b>claim</b> it,
         and a marker in your colour appears on it.</p>
+        ${figToll(T)}
         <ul>
           <li>Anyone may still use that channel — nothing is blocked.</li>
           <li>But when another player ships through it, they pay you

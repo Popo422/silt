@@ -383,3 +383,69 @@ test.describe('tutorial speaks the active theme', () => {
     expect(ship.body.toLowerCase()).not.toContain('ship (ship)');
   });
 });
+
+// The rulebook was ten pages of prose describing a board the reader could not
+// see. Diagrams draw with the SAME channel curves and water textures as the real
+// board, so what the book shows cannot drift from what you play.
+test.describe('rulebook diagrams', () => {
+  const openTo = async (page, i) => {
+    await page.locator('#btnRulesMenu').click();
+    await page.evaluate((n) => window.SILT.openBook(n), i);
+  };
+
+  test('the water page illustrates depth, silting and chokepoints', async ({ page }) => {
+    await open(page);
+    await openTo(page, 3);
+    await expect(page.locator('.bookBody .fig')).toHaveCount(3);
+  });
+
+  test('the tolls page shows a claimed channel', async ({ page }) => {
+    await open(page);
+    await openTo(page, 4);
+    await expect(page.locator('.bookBody .fig')).toHaveCount(1);
+  });
+
+  test('every depth state is drawn with its own texture', async ({ page }) => {
+    await open(page);
+    await openTo(page, 3);
+    // Four patterns, one per depth — if a diagram reused an id, the second figure
+    // on the page would silently steal the first one's fill.
+    for (const d of [0, 1, 2, 3]) {
+      await expect(page.locator(`.bookBody pattern[id$="t${d}"]`).first()).toBeAttached();
+    }
+  });
+
+  test('figures carry captions rather than floating unexplained', async ({ page }) => {
+    await open(page);
+    await openTo(page, 3);
+    const caps = await page.locator('.bookBody .fig figcaption').allTextContents();
+    expect(caps.length).toBe(3);
+    for (const c of caps) expect(c.trim().length).toBeGreaterThan(10);
+  });
+
+  test('diagram textures actually load', async ({ page }) => {
+    const bad = [];
+    page.on('response', r => {
+      if (/water-|land-/.test(r.url()) && r.status() >= 400) bad.push(r.url().split('/').pop());
+    });
+    await open(page);
+    await openTo(page, 3);
+    await page.waitForTimeout(400);
+    expect(bad, `missing textures: ${bad.join(', ')}`).toEqual([]);
+  });
+
+  test('diagrams follow the active theme', async ({ page }) => {
+    await open(page);
+    // This suite opens on ANOD, so set the theme explicitly rather than assuming.
+    await page.evaluate(() => window.SILT.setTheme('silt'));
+    await openTo(page, 3);
+    const en = await page.locator('.bookBody .fig figcaption').first().textContent();
+    expect(en).toMatch(/depth|Depth/);
+    await page.locator('#bkClose').click();
+    await page.evaluate(() => window.SILT.setTheme('anod'));
+    await openTo(page, 3);
+    const tl = await page.locator('.bookBody .fig figcaption').first().textContent();
+    expect(tl, 'the caption should change with the theme').not.toBe(en);
+    expect(tl).toContain('lalim');
+  });
+});

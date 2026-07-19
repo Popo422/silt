@@ -908,7 +908,7 @@ describe('module boundaries hold', () => {
   it('presentation modules do not import back into the UI', () => {
     // Dependencies run one way. board.js reaching into ui.js is exactly how the
     // split it just came out of got tangled in the first place.
-    for (const f of ['./board.js', './fx.js', './panzoom.js', './tips.js']) {
+    for (const f of ['./board.js', './fx.js', './panzoom.js', './tips.js', './diagrams.js']) {
       expect(read(f), `${f} must not import ui.js`).not.toContain("'./ui.js'");
     }
   });
@@ -929,7 +929,8 @@ describe('module boundaries hold', () => {
     const caps = {
       './engine.js': 700, './board.js': 500, './fx.js': 400,
       './ui.js': 900, './theme.js': 300, './ai.js': 300,
-      './panzoom.js': 200, './tips.js': 150,
+      './panzoom.js': 200, './tips.js': 150, './diagrams.js': 260,
+      './rulebook.js': 320,
     };
     for (const [f, cap] of Object.entries(caps)) {
       const n = read(f).split('\n').length;
