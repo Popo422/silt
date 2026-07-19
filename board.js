@@ -10,6 +10,7 @@ import { NODES, MOUTHS, CHANNELS, chKey, NODE_BY_ID } from './graph.js';
 import { buildTargets, shipOptions, TUNING } from './engine.js';
 import { nodeName } from './theme.js';
 import { drawFrame } from './frame.js';
+import { drawBayTrack } from './bays.js';
 import { el, use } from './svg.js';
 
 export { el, use } from './svg.js';
@@ -433,16 +434,7 @@ export function drawBoard(ctx) {
     label.textContent = nodeLabel(T, n.id);
     grp.appendChild(label);
 
-    if (isMouth) {
-      const tot = g.players.reduce((s, p) =>
-        s + p.delivered[n.id].timber + p.delivered[n.id].grain + p.delivered[n.id].salt, 0);
-      if (tot) {
-        const t = el('text', { x: n.x, y: n.y + 10.2, 'text-anchor': 'middle',
-          'font-size': 2.1, fill: 'var(--dim)' });
-        t.textContent = `${tot} delivered`;
-        grp.appendChild(t);
-      }
-    }
+    if (isMouth) drawBayTrack({ grp, n, g, PC, HUMAN, T, nodeLabel });
 
     const interactive = btargets.has(n.id) || sfrom.has(n.id);
     if (interactive) {

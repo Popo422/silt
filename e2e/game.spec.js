@@ -534,3 +534,44 @@ test('the actor badge names the action, not just the player', async ({ page }) =
   // "Name — Action", not a bare name.
   expect(seen.every(s => s.includes('—')), `got: ${seen.join(' | ')}`).toBe(true);
 });
+
+// Bay majority is the largest scoring block after contracts, and it used to be
+// invisible while playing: the board showed one combined "15 delivered" with no
+// indication of who led or what leading was worth. You found out at scoring.
+test.describe('bay majority is visible during the game', () => {
+  const playRounds = async (page, n) => {
+    await page.goto('/index.html');
+    await page.evaluate(() => window.SILT.ready);
+    await page.evaluate(() => { window.SILT.setSpeed('off'); window.SILT.setTheme('silt'); });
+    await page.evaluate(() => window.SILT.boot(3));
+    for (let r = 0; r < n; r++) {
+      await page.evaluate(() => window.SILT.program('survey', 'survey'));
+      await page.evaluate(() => window.SILT.commit());
+    }
+  };
+
+  test('each bay shows who leads it and what that is worth', async ({ page }) => {
+    await playRounds(page, 7);
+    const tracks = page.locator('g.bayTrack');
+    expect(await tracks.count(), 'bays with deliveries should show a track')
+      .toBeGreaterThan(0);
+    // "6 → 12": goods delivered, then the VP tier that currently earns.
+    const rows = await tracks.first().locator('text').allTextContents();
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(r).toMatch(/^\d+ → \d+$/);
+  });
+
+  test('the tiers shown are the ones the engine actually scores', async ({ page }) => {
+    await playRounds(page, 7);
+    const { shown, legal } = await page.evaluate(() => ({
+      // Read the real TUNING off the app rather than hardcoding 12/6/2 here:
+      // the point of this test is that the board cannot drift from the engine,
+      // and a literal in the test would just be a third copy to drift.
+      legal: window.SILT.tuning.mouthVP,
+      shown: [...document.querySelectorAll('g.bayTrack text')]
+        .map(t => +t.textContent.split('→')[1].trim()),
+    }));
+    expect(shown.length, 'expected some bay rows to check').toBeGreaterThan(0);
+    for (const v of shown) expect(legal, `printed tier ${v}`).toContain(v);
+  });
+});
