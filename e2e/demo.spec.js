@@ -147,3 +147,21 @@ test('quitting to the menu mid-demo leaves nothing running', async ({ page }) =>
   await page.evaluate(() => window.SILT.commit());
   expect(await page.evaluate(() => window.SILT.state().round)).toBe(2);
 });
+
+// Speed persists across sessions, and the rest of this suite wipes it on boot —
+// so the one state a returning player can actually be in was the one state never
+// tested. Anyone who had ever turned animation off got the whole game resolved
+// instantly and landed on the final score having seen no narration at all.
+test('watch mode narrates even when animation was left off', async ({ page }) => {
+  await page.addInitScript(() => {
+    try { localStorage.setItem('silt.speed', 'off'); } catch { /* private mode */ }
+  });
+  await page.goto('/index.html');
+  await page.evaluate(() => window.SILT.ready);
+  await page.evaluate(() => window.SILT.watch());
+
+  await expect(page.locator('#tut')).toHaveClass(/watching/);
+  await expect(page.locator('#tutTitle')).not.toBeEmpty();
+  // Still mid-game, not already scored.
+  await expect(page.locator('#ov')).not.toHaveClass(/on/);
+});

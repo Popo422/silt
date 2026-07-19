@@ -365,8 +365,13 @@ function startDemo() {
     step: () => step(),
     roundOf: () => g.round,
     rounds: () => TUNING.rounds,
-    wait: (ms) => wait(ms * (SPEEDS[speed] ?? 1)),
-    silent: () => speed === 'off',
+    // Watch mode floors the speed at 'fast'. Speed 'off' persists across
+    // sessions, so anyone who ever turned animation off — then came back and
+    // clicked Watch — got all 8 rounds resolved in under 100ms and landed on the
+    // final score having seen nothing. The demo IS the narration; a demo with the
+    // captions skipped is not a faster demo, it is no demo at all.
+    wait: (ms) => wait(ms * Math.max(SPEEDS[speed] ?? 1, SPEEDS.fast)),
+    silent: () => false,
     newRound: (r) => {
       for (const p of g.players) p.program = STRATEGIES[p.strat](g, p);
       committedThisRound = true;
