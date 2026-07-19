@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   newGame, execute, siltPhase, regrowPhase, upkeepPhase, score, seatOrder,
   buildTargets, dredgeTargets, shipRoutes, shipOptions, canReachMouth, startValue,
@@ -874,6 +875,65 @@ describe('tutorial copy is well-formed in every theme', () => {
     for (const s of STEPS.filter(s => s.check)) {
       const { hint } = stepText(s, THEME);
       expect(hint, `step ${s.id} is gated and needs a hint`).toBeTruthy();
+    }
+  });
+});
+
+// ---------------------------------------------------------------- architecture
+// ARCHITECTURE.md states rules; these enforce the ones that can be checked
+// mechanically. A guide nobody can violate accidentally is worth more than a
+// guide everyone has to remember.
+describe('module boundaries hold', () => {
+  const read = (f) => readFileSync(new URL(f, import.meta.url), 'utf8');
+
+  it('the engine never imports presentation', () => {
+    const src = read('./engine.js');
+    // The engine must stay simulatable: sim.mjs plays 200 games a second only
+    // because nothing here needs a browser. One DOM import breaks every balance
+    // number in the repo.
+    for (const bad of ['./theme.js', './ui.js', './board.js', './fx.js', './tips.js']) {
+      expect(src, `engine.js must not import ${bad}`).not.toContain(bad);
+    }
+    expect(src, 'engine.js must not touch the DOM').not.toMatch(/\bdocument\./);
+    expect(src, 'engine.js must not touch the window').not.toMatch(/\bwindow\./);
+  });
+
+  it('the rules layer never imports the DOM', () => {
+    for (const f of ['./engine.js', './graph.js', './ai.js']) {
+      const src = read(f);
+      expect(src, `${f} must not touch the DOM`).not.toMatch(/document\.|window\.|getElementById/);
+    }
+  });
+
+  it('presentation modules do not import back into the UI', () => {
+    // Dependencies run one way. board.js reaching into ui.js is exactly how the
+    // split it just came out of got tangled in the first place.
+    for (const f of ['./board.js', './fx.js', './panzoom.js', './tips.js']) {
+      expect(read(f), `${f} must not import ui.js`).not.toContain("'./ui.js'");
+    }
+  });
+
+  it('the generic helpers know nothing about the game', () => {
+    // These two are reusable precisely because they have no game vocabulary.
+    for (const f of ['./panzoom.js', './tips.js']) {
+      const src = read(f);
+      for (const bad of ['./engine.js', './graph.js', './theme.js']) {
+        expect(src, `${f} must not import ${bad}`).not.toContain(bad);
+      }
+    }
+  });
+
+  it('no module has grown past the point of doing one job', () => {
+    // A soft cap with teeth. ui.js hit 1300 lines doing six unrelated things
+    // before anyone noticed; this fails loudly the next time that starts.
+    const caps = {
+      './engine.js': 700, './board.js': 500, './fx.js': 400,
+      './ui.js': 900, './theme.js': 300, './ai.js': 300,
+      './panzoom.js': 200, './tips.js': 150,
+    };
+    for (const [f, cap] of Object.entries(caps)) {
+      const n = read(f).split('\n').length;
+      expect(n, `${f} is ${n} lines (cap ${cap}) — time to split it`).toBeLessThanOrEqual(cap);
     }
   });
 });
