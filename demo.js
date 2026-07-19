@@ -297,7 +297,7 @@ export function createDemo(host) {
 // extra class for the bottom-centre subtitle position. Only the button row
 // differs — transport controls instead of step-through, because there is
 // nothing here for the viewer to complete.
-export function paintCaption(box, demo, { T, round, rounds, speedLabel, el }) {
+export function paintCaption(box, demo, { T, round, rounds, speedLabel, el, speech }) {
   const t = demo.text(T);
   box.classList.add('on');
   box.classList.add('watching');
@@ -313,6 +313,14 @@ export function paintCaption(box, demo, { T, round, rounds, speedLabel, el }) {
   el('tutSkipStep').style.display = '';
   el('tutSkipStep').textContent = `Speed ${speedLabel}`;
   el('tutSkip').textContent = 'Play it myself';
+  // Read-aloud toggle. Hidden entirely where the platform has no speech support,
+  // rather than offered as a button that quietly does nothing.
+  const say = el('tutSpeak');
+  if (say) {
+    say.style.display = speech?.available ? '' : 'none';
+    say.textContent = speech?.enabled ? '🔊 Voice on' : '🔇 Voice off';
+    say.setAttribute('aria-pressed', speech?.enabled ? 'true' : 'false');
+  }
   // The kicker names the beat and carries the emphasis in this mode.
   el('tutWait').textContent = t?.kicker ?? '';
 }
@@ -330,6 +338,8 @@ export function wireDemo(host) {
     (isWatching() ? host.cycleSpeed() : host.tutNext()));
   el('tutSkip').addEventListener('click', () =>
     (isWatching() ? host.takeOver() : host.tutStop()));
+  // Watch-mode only, so no tutorial branch: the button is hidden otherwise.
+  el('tutSpeak')?.addEventListener('click', () => host.toggleSpeech());
 }
 
 // A seed chosen because the game it produces actually contains the beats above —

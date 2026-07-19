@@ -533,8 +533,9 @@
   #tut button{padding:8px 14px;border-radius:6px;font:inherit;font-size:12px;cursor:pointer;
     font-weight:600}
   #tutNext{background:var(--gold);border:1px solid var(--gold);color:var(--bg)}
-  #tutSkip,#tutSkipStep{background:transparent;border:1px solid var(--line2);color:var(--dim)}
-  #tutSkipStep:hover,#tutSkip:hover{color:var(--ink);border-color:var(--gold)}
+  #tutSkip,#tutSkipStep,#tutSpeak{background:transparent;border:1px solid var(--line2);color:var(--dim)}
+  #tutSkipStep:hover,#tutSkip:hover,#tutSpeak:hover{color:var(--ink);border-color:var(--gold)}
+  #tutSpeak[aria-pressed="true"]{color:var(--gold);border-color:var(--gold)}
   #tutSkip:hover{color:var(--ink)}
   #tut .wait{font-size:11px;color:var(--gold);opacity:.9;flex:1;line-height:1.35}
   #tut .row{flex-wrap:wrap}
@@ -859,6 +860,8 @@
       <div class="row">
         <button id="tutNext">Next</button>
         <button id="tutSkipStep">Skip step</button>
+        <!-- Watch mode only; paintCaption hides it where speech is unsupported. -->
+        <button id="tutSpeak" style="display:none">🔇 Voice off</button>
         <button id="tutSkip">Skip tutorial</button>
         <span class="wait" id="tutWait"></span>
       </div>

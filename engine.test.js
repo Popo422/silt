@@ -941,6 +941,7 @@ describe('module boundaries hold', () => {
       './ui.js': 900, './theme.js': 300, './ai.js': 300,
       './panzoom.js': 200, './tips.js': 150, './diagrams.js': 260,
       './rulebook.js': 320, './demo.js': 400, './panel.js': 300,
+      './speech.js': 150,
     };
     for (const [f, cap] of Object.entries(caps)) {
       const n = read(f).split('\n').length;

@@ -11,6 +11,7 @@ import { pages, createRulebook } from './rulebook.js';
 import { createFX } from './fx.js';
 import { createPanZoom } from './panzoom.js';
 import { createTips, esc } from './tips.js';
+import { createSpeech } from './speech.js';
 import { drawBoard as paintBoard, el, insetRadius } from './board.js';
 import {
   renderContracts, renderPlayers, renderActions, renderSlots, renderAimHint,
@@ -68,6 +69,10 @@ let speed = 'normal';
 // someone to move a call.
 const SPEED_ORDER = ['normal', 'fast', 'off'];
 const SPEED_LABEL = { normal: '1×', fast: '2×', off: 'off' };
+
+// Spoken captions for watch mode. Off by default and remembered; see speech.js
+// for why it cannot start on its own.
+const speech = createSpeech();
 
 // Hold time is NOT the effect's full duration. Waiting for every animation to
 // finish made one round take 7.4s — a minute of watching per game. Effects are
@@ -365,12 +370,18 @@ function startDemo() {
     step: () => step(),
     roundOf: () => g.round,
     rounds: () => TUNING.rounds,
-    // Watch mode floors the speed at 'fast'. Speed 'off' persists across
-    // sessions, so anyone who ever turned animation off — then came back and
-    // clicked Watch — got all 8 rounds resolved in under 100ms and landed on the
-    // final score having seen nothing. The demo IS the narration; a demo with the
-    // captions skipped is not a faster demo, it is no demo at all.
-    wait: (ms) => wait(ms * Math.max(SPEEDS[speed] ?? 1, SPEEDS.fast)),
+    // Watch mode always runs at full pace, whatever the speed toggle says.
+    //
+    // These captions are 40-word paragraphs and they are the entire reason the
+    // mode exists, so the viewer needs time to actually read one. Speed 'off'
+    // persists across sessions, so anyone who had ever turned animation off then
+    // clicked Watch got all 8 rounds in under 100ms and landed on the final score
+    // having seen nothing at all.
+    //
+    // Note these multipliers run the other way to intuition: 'fast' is 0.5, so
+    // LARGER means slower. Flooring with Math.max against SPEEDS.fast picked the
+    // smaller value and cut every caption to 1.3s — still unreadable.
+    wait: (ms) => wait(ms * SPEEDS.normal),
     silent: () => false,
     newRound: (r) => {
       for (const p of g.players) p.program = STRATEGIES[p.strat](g, p);
@@ -457,10 +468,16 @@ function renderTutorial() {
   const box = $('tut');
   document.querySelectorAll('.uiPulse').forEach(e => e.classList.remove('uiPulse'));
   // Watch mode paints the same box with transport controls instead of steps.
-  if (demo?.active) return paintCaption(box, demo, {
-    T, round: Math.min(g.round, TUNING.rounds), rounds: TUNING.rounds,
-    speedLabel: SPEED_LABEL[speed], el: $,
-  });
+  if (demo?.active) {
+    paintCaption(box, demo, {
+      T, round: Math.min(g.round, TUNING.rounds), rounds: TUNING.rounds,
+      speedLabel: SPEED_LABEL[speed], el: $,
+      speech: { available: speech.available, enabled: speech.enabled },
+    });
+    const t = demo.text(T);
+    speech.narrate(demo.beat?.id ?? null, t?.title, t?.body, demo.paused);
+    return;
+  }
   const s = tut?.step();
   if (!s) { box.classList.remove('on'); return; }
 
@@ -500,6 +517,9 @@ function stopDemo() {
   demo.paused = false;
   demo.stop();
   demo = null;
+  // Speech outlives the utterance it started, so quitting mid-sentence would
+  // leave a voice describing a board that is no longer on screen.
+  speech.reset();
   $('tut').classList.remove('watching');
 }
 
@@ -800,6 +820,9 @@ wireDemo({
   // "Play it myself" — the demo exists to make someone want to play, so the
   // exit drops straight into a real game rather than back to the menu.
   takeOver: () => { stopDemo(); start(false); },
+  // Turning it on mid-beat speaks the caption already on screen, rather than
+  // staying silent until the next one happens to fire.
+  toggleSpeech: () => { speech.toggle(); render(); },
   tutNext: () => { tut?.next(); render(); },
   tutStop: () => { tut?.stop(); render(); },
 });

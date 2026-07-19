@@ -4,23 +4,19 @@
 // looks identical to a slow one, so every test here asserts on progress.
 import { test, expect } from '@playwright/test';
 
+// Watch mode deliberately ignores the speed setting — the captions are the whole
+// point of the mode and they need time to be read, so a full 8-round demo runs
+// about 45 seconds no matter what the toggle says. Tests that wait for it to
+// finish have to budget for that; tests that only need it RUNNING should assert
+// on progress and move on.
+const FULL_DEMO_MS = 90_000;
+
 const boot = async (page) => {
   await page.goto('/index.html');
   await page.evaluate(() => window.SILT.ready);
-  // Effects off: the suite should not wait on animation, and the demo's caption
-  // holds are scaled by speed so this keeps a full 8-round game to a few seconds.
   await page.evaluate(() => window.SILT.setSpeed('off'));
 };
 
-// Speed 'off' collapses every caption hold to zero, so the whole 8-round game
-// resolves in well under 100ms — by the time a test looks, the demo has already
-// stopped and the scoreboard is up. Anything asserting on the demo *while it
-// runs* has to leave the holds in place.
-const bootWatching = async (page) => {
-  await page.goto('/index.html');
-  await page.evaluate(() => window.SILT.ready);
-  await page.evaluate(() => window.SILT.setSpeed('fast'));
-};
 
 test('the menu offers a game you can watch', async ({ page }) => {
   await boot(page);
@@ -32,7 +28,8 @@ test('watch mode plays itself to the end with no input', async ({ page }) => {
   await page.evaluate(() => window.SILT.watch());
 
   // The whole point: nobody touches the page from here.
-  await expect(page.locator('#ov')).toHaveClass(/on/, { timeout: 25_000 });
+  test.setTimeout(FULL_DEMO_MS + 30_000);
+  await expect(page.locator('#ov')).toHaveClass(/on/, { timeout: FULL_DEMO_MS });
 
   const s = await page.evaluate(() => window.SILT.score());
   expect(s).toHaveLength(3);
@@ -51,7 +48,7 @@ test('the board never waits for a target in watch mode', async ({ page }) => {
 });
 
 test('narration appears and is themed', async ({ page }) => {
-  await bootWatching(page);
+  await boot(page);
   await page.evaluate(() => window.SILT.watch());
 
   const cap = page.locator('#tut');
@@ -69,13 +66,13 @@ test('narration appears and is themed', async ({ page }) => {
   //
   // demo() goes null the moment the game ends, so the accumulator lives here —
   // reading fired[] after the fact would find nothing left to read.
-  // A full demo at 'fast' runs about 25s, and first-death lands near the end.
+  // first-death lands near the end of a ~45s demo.
   const seen = new Set();
   await expect.poll(async () => {
     const d = await page.evaluate(() => window.SILT.demo());
     for (const id of d?.fired ?? []) seen.add(id);
     return ['first-ship', 'first-dredge', 'first-death'].filter(id => seen.has(id)).length;
-  }, { timeout: 60_000, intervals: [250] }).toBe(3);
+  }, { timeout: FULL_DEMO_MS, intervals: [250] }).toBe(3);
 
   expect([...seen]).toContain('first-ship');
   expect([...seen]).toContain('first-dredge');
@@ -83,14 +80,11 @@ test('narration appears and is themed', async ({ page }) => {
 });
 
 test('pause holds the game, resume continues it', async ({ page }) => {
-  await page.goto('/index.html');
-  await page.evaluate(() => window.SILT.ready);
-  // NOT speed 'off' here: with effects and caption holds disabled the whole
-  // 8-round game resolves in about half a second, so a pause lands after the
-  // game is already over and proves nothing. This test needs it mid-flight.
-  await page.evaluate(() => window.SILT.setSpeed('fast'));
+  await boot(page);
   await page.evaluate(() => window.SILT.watch());
-  await page.waitForTimeout(700);
+  // Pause only proves something if the demo is still running when it lands.
+  await expect.poll(() => page.evaluate(() => window.SILT.demo()?.active ?? false))
+    .toBe(true);
   await page.evaluate(() => window.SILT.demoPause());
 
   const at = () => page.evaluate(() => ({
@@ -102,10 +96,13 @@ test('pause holds the game, resume continues it', async ({ page }) => {
   const before = await at();
   expect(before.over).toBe(false);   // guard: the premise of the test
 
-  // Let the pause settle past any in-flight effect hold, then confirm it sticks.
-  await page.waitForTimeout(1500);
+  // The pause gate is checked between actions, not inside one, so the action
+  // already in flight when you click still finishes — expect up to one more log
+  // line, then nothing. What matters is that it CONVERGES: a demo that merely
+  // slowed down would keep adding lines forever.
+  await page.waitForTimeout(3000);
   const settled = await at();
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(3000);
   expect(await at()).toEqual(settled);   // paused means paused, not merely slower
 
   await page.evaluate(() => window.SILT.demoResume());
@@ -115,7 +112,7 @@ test('pause holds the game, resume continues it', async ({ page }) => {
 });
 
 test('"play it myself" hands over a real game', async ({ page }) => {
-  await bootWatching(page);
+  await boot(page);
   await page.evaluate(() => window.SILT.watch());
   await expect(page.locator('#tutSkip')).toBeVisible();
   await page.locator('#tutSkip').click();
@@ -133,7 +130,7 @@ test('"play it myself" hands over a real game', async ({ page }) => {
 test('quitting to the menu mid-demo leaves nothing running', async ({ page }) => {
   // Mid-demo means mid-demo: at speed 'off' the game is over before the quit
   // lands, and this would pass without ever exercising the teardown it names.
-  await bootWatching(page);
+  await boot(page);
   await page.evaluate(() => window.SILT.watch());
   await expect.poll(() => page.evaluate(() => window.SILT.demo()?.active ?? false))
     .toBe(true);
@@ -164,4 +161,66 @@ test('watch mode narrates even when animation was left off', async ({ page }) =>
   await expect(page.locator('#tutTitle')).not.toBeEmpty();
   // Still mid-game, not already scored.
   await expect(page.locator('#ov')).not.toHaveClass(/on/);
+});
+
+// Read-aloud captions. speechSynthesis is stubbed because CI has no audio
+// device and real utterances are asynchronous and untimed — this asserts the
+// wiring (does a beat reach the speech layer), not that sound came out.
+//
+// NOTE the stub must go in via defineProperty: window.speechSynthesis is a
+// read-only accessor, so plain assignment is silently dropped and the module
+// keeps a handle on the real one while the page appears to hold a fake.
+const stubSpeech = (page) => page.addInitScript(() => {
+  window.__spoken = [];
+  Object.defineProperty(window, 'speechSynthesis', {
+    configurable: true,
+    value: {
+      getVoices: () => [{ name: 'Google UK English Male', lang: 'en-GB' }],
+      speak: (u) => window.__spoken.push(u.text),
+      cancel: () => {},
+      addEventListener: () => {},
+    },
+  });
+  window.SpeechSynthesisUtterance = function (t) { this.text = t; };
+});
+
+test('watch mode can read its captions aloud, and does not by default', async ({ page }) => {
+  await stubSpeech(page);
+  await page.goto('/index.html');
+  await page.evaluate(() => window.SILT.ready);
+  await page.evaluate(() => window.SILT.watch());
+
+  // Silent until asked: a page that starts talking on its own is hostile.
+  const toggle = page.locator('#tutSpeak');
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await page.waitForTimeout(1200);
+  expect(await page.evaluate(() => window.__spoken.length)).toBe(0);
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  // Speaks the caption already on screen rather than waiting for the next beat.
+  await expect.poll(() => page.evaluate(() => window.__spoken.length))
+    .toBeGreaterThan(0);
+  const first = await page.evaluate(() => window.__spoken[0]);
+  expect(first).toContain(await page.locator('#tutTitle').innerText());
+});
+
+test('each caption is spoken once, not restarted on every repaint', async ({ page }) => {
+  await stubSpeech(page);
+  await page.goto('/index.html');
+  await page.evaluate(() => window.SILT.ready);
+  await page.evaluate(() => window.SILT.watch());
+  await page.locator('#tutSpeak').click();
+
+  // render() runs on every effect and repaint. Speaking unconditionally would
+  // restart the sentence several times per beat, so utterances must not
+  // outnumber the beats that fired.
+  await expect.poll(() => page.evaluate(() => window.__spoken.length))
+    .toBeGreaterThan(1);
+  await page.waitForTimeout(3000);
+  const spoken = await page.evaluate(() => window.__spoken);
+  const fired = await page.evaluate(() => window.SILT.demo()?.fired ?? []);
+  expect(spoken.length).toBeLessThanOrEqual(fired.length + 1);
+  expect(new Set(spoken).size).toBe(spoken.length);   // no caption said twice
 });
