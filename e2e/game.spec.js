@@ -7,6 +7,7 @@ const boot = async (page, seed = 20260719, players = 4) => {
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto('/index.html');
   await page.waitForFunction(() => window.SILT?.isReady === true);
+  await page.evaluate(() => window.SILT.setTheme('silt'));
   await page.evaluate(n => window.SILT.setConfig({
     players: n, bots: ['balanced', 'expander', 'steward'].slice(0, n - 1),
   }), players);
@@ -70,9 +71,9 @@ test.describe('programming UI', () => {
   test('fills slot 1 then slot 2 in order', async ({ page }) => {
     await boot(page);
     await page.locator('[data-act="dredge"]').click();
-    await expect(page.locator('#s0 .a')).toHaveText('dredge');
+    await expect(page.locator('#s0 .a')).toHaveText(/dredge/i);
     await page.locator('[data-act="survey"]').click();
-    await expect(page.locator('#s1 .a')).toHaveText('survey');
+    await expect(page.locator('#s1 .a')).toHaveText(/survey/i);
   });
 
   test('lets a slot be re-targeted by clicking it', async ({ page }) => {
@@ -81,16 +82,16 @@ test.describe('programming UI', () => {
     await page.locator('[data-act="survey"]').click();
     await page.locator('#s0').click();
     await page.locator('[data-act="ship"]').click();
-    await expect(page.locator('#s0 .a')).toHaveText('ship');
-    await expect(page.locator('#s1 .a')).toHaveText('survey');
+    await expect(page.locator('#s0 .a')).toHaveText(/ship/i);
+    await expect(page.locator('#s1 .a')).toHaveText(/survey/i);
   });
 
   test('allows the same action in both slots', async ({ page }) => {
     await boot(page);
     await page.locator('[data-act="survey"]').click();
     await page.locator('[data-act="survey"]').click();
-    await expect(page.locator('#s0 .a')).toHaveText('survey');
-    await expect(page.locator('#s1 .a')).toHaveText('survey');
+    await expect(page.locator('#s0 .a')).toHaveText(/survey/i);
+    await expect(page.locator('#s1 .a')).toHaveText(/survey/i);
   });
 });
 

@@ -2,8 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SILT — a river delta game</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<title>ANOD — a river delta game</title>
 <style>
   :root{
     --bg:#0b1316; --panel:#111d21; --panel2:#0c1619; --line:#1e3238; --line2:#2a464f;
@@ -56,6 +58,20 @@
     background:transparent;color:var(--ink);font:inherit;font-weight:600;font-size:15px;
     cursor:pointer;transition:.13s}
   .btnGhost:hover{background:#152429;border-color:var(--gold);color:var(--gold)}
+  #gloss{margin-top:22px;border-top:1px solid var(--line);padding-top:14px}
+  #gloss summary{cursor:pointer;color:var(--dim);font-size:12px;letter-spacing:.06em;
+    list-style:none;user-select:none}
+  #gloss summary::-webkit-details-marker{display:none}
+  #gloss summary::before{content:'▸ ';color:var(--gold)}
+  #gloss[open] summary::before{content:'▾ '}
+  #gloss summary:hover{color:var(--ink)}
+  .glossBody{margin-top:12px;font-size:12.5px;line-height:1.6;color:var(--dim)}
+  .glossBody h5{margin:12px 0 5px;font-size:10px;letter-spacing:.13em;
+    text-transform:uppercase;color:var(--dim2);font-weight:600}
+  .glossBody dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:3px 12px}
+  .glossBody dt{color:var(--gold);font-weight:600;white-space:nowrap}
+  .glossBody dd{margin:0}
+  .glossBody p{margin:10px 0 0;font-size:12px;line-height:1.6}
 
   /* ---------- game ---------- */
   #game{display:flex;height:100vh}
@@ -91,6 +107,7 @@
   .slot svg{width:19px;height:19px;color:var(--gold)}
   .slot .n{font-size:9px;color:var(--dim2);letter-spacing:.12em}
   .slot .a{font-weight:600;font-size:12px;text-transform:capitalize}
+  .slot .g{font-size:9px;color:var(--dim2);text-transform:lowercase;margin-top:-1px}
   .acts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
   .act{display:flex;gap:8px;align-items:flex-start;padding:9px;border-radius:6px;
     border:1px solid var(--line);background:#152329;color:var(--ink);font:inherit;
@@ -100,6 +117,8 @@
   .act svg{width:17px;height:17px;color:var(--gold);flex:none;margin-top:1px}
   .act .txt{display:flex;flex-direction:column;min-width:0}
   .act .t{font-weight:600;text-transform:capitalize;font-size:13px;line-height:1.2}
+  .act .t em{font-style:normal;font-weight:400;color:var(--dim2);font-size:10px;
+    text-transform:lowercase;margin-left:5px}
   .act .d{font-size:10px;color:var(--dim);margin-top:3px;line-height:1.35}
   #go{width:100%;margin-top:9px;padding:11px;border-radius:6px;border:1px solid var(--gold);
     background:var(--gold);color:#0b1316;font:inherit;font-weight:700;cursor:pointer;
@@ -150,12 +169,127 @@
   #tutSkip:hover{color:var(--ink)}
   #tut .wait{font-size:11px;color:var(--gold);opacity:.85}
 
+
+  /* ---------- rulebook ---------- */
+  #book{position:fixed;inset:0;background:rgba(6,11,9,.96);display:none;
+    align-items:center;justify-content:center;z-index:80;padding:20px}
+  #book.on{display:flex}
+  .bookCard{background:var(--panel);border:1px solid var(--line2);border-radius:12px;
+    width:min(620px,100%);max-height:88vh;display:flex;flex-direction:column;
+    box-shadow:0 24px 70px rgba(0,0,0,.6)}
+  .bookHead{display:flex;align-items:flex-start;gap:12px;padding:20px 24px 14px;
+    border-bottom:1px solid var(--line)}
+  .bookHead>div{flex:1}
+  .bookTitle{font-size:20px;font-weight:600;letter-spacing:.02em}
+  .bookSub{color:var(--dim);font-size:12px;margin-top:3px}
+  .bookBody{padding:18px 24px;overflow-y:auto;flex:1;font-size:13.5px;line-height:1.65;
+    color:var(--ink)}
+  .bookBody p{margin:0 0 12px;color:var(--dim)}
+  .bookBody p b,.bookBody li b,.bookBody dd b{color:var(--ink)}
+  .bookBody p.warn{color:var(--ink);background:#2a1f14;border-left:2px solid var(--gold);
+    padding:9px 12px;border-radius:0 5px 5px 0}
+  .bookBody p.tip{color:var(--dim);border-left:2px solid var(--line2);padding:2px 0 2px 12px}
+  .bookBody ol,.bookBody ul{margin:0 0 12px;padding-left:20px;color:var(--dim)}
+  .bookBody li{margin-bottom:7px}
+  .bookBody dl.acts{display:grid;grid-template-columns:auto 1fr;gap:9px 14px;margin:0 0 12px}
+  .bookBody dl.acts dt{color:var(--gold);font-weight:600;white-space:nowrap}
+  .bookBody dl.acts dt em{display:block;font-style:normal;font-weight:400;font-size:10px;
+    color:var(--dim2);text-transform:lowercase}
+  .bookBody dl.acts dt.neg{color:#d98a72}
+  .bookBody dl.acts dd{margin:0;color:var(--dim)}
+  table.depth{border-collapse:collapse;margin:0 0 12px;font-size:13px}
+  table.depth td{padding:4px 10px 4px 0;border:none;text-align:left;color:var(--dim)}
+  table.depth i{display:inline-block;width:26px;height:5px;border-radius:3px}
+  table.depth i.d3{background:var(--water3)} table.depth i.d2{background:var(--water2)}
+  table.depth i.d1{background:var(--water1)}
+  table.depth i.d0{background:var(--dead);outline:1px dashed #6b4a2c}
+  .bookFoot{display:flex;align-items:center;gap:12px;padding:13px 24px;
+    border-top:1px solid var(--line)}
+  .pageBtn{background:#152329;border:1px solid var(--line2);color:var(--ink);
+    border-radius:6px;padding:9px 15px;font:inherit;font-size:13px;cursor:pointer;
+    font-weight:600}
+  .pageBtn:hover:not(:disabled){border-color:var(--gold);color:var(--gold)}
+  .pageBtn:disabled{opacity:.3;cursor:not-allowed}
+  .dots{flex:1;display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+  .dots button{width:8px;height:8px;border-radius:50%;border:none;padding:0;
+    background:var(--line2);cursor:pointer;transition:.13s}
+  .dots button.on{background:var(--gold);transform:scale(1.3)}
+  .dots button:hover{background:var(--dim)}
+  @media (max-width: 820px), (pointer: coarse) and (max-width: 1024px){
+    #book{padding:0;align-items:stretch}
+    .bookCard{width:100%;max-height:100dvh;border-radius:0;border:none}
+    .bookHead{padding:16px 18px 12px}
+    .bookBody{padding:16px 18px}
+    .bookFoot{padding:12px 18px;padding-bottom:max(12px,env(safe-area-inset-bottom))}
+    .pageBtn{padding:12px 16px}
+    .dots button{width:10px;height:10px}
+  }
+
   .pulse{animation:pulse 1.5s ease-in-out infinite}
   @keyframes pulse{0%,100%{filter:none}50%{filter:drop-shadow(0 0 7px var(--gold))}}
   .uiPulse{box-shadow:0 0 0 2px var(--gold),0 0 16px rgba(224,164,88,.45)!important;
     border-radius:7px}
   text{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;user-select:none}
   .node{cursor:default}
+
+  /* ---------- mobile ----------
+     Phones get a stacked layout: board on top, a scrollable control sheet below.
+     The log and legend collapse behind a toggle so the action buttons and the
+     commit button are always reachable without scrolling. */
+  @media (max-width: 820px), (pointer: coarse) and (max-width: 1024px) {
+    body{overflow:auto}
+    #game{flex-direction:column;height:100dvh}
+    #board{flex:0 0 auto;height:52dvh;min-height:280px}
+    aside{width:100%;border-left:none;border-top:1px solid var(--line);
+      flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+    header{position:sticky;top:0;z-index:5;background:var(--panel)}
+    .pane{padding:10px 13px}
+    /* players go horizontal to save vertical space */
+    #pls{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+    .pl{margin-bottom:0;flex:0 0 auto;font-size:12px;padding:5px 8px}
+    .pl .nm{max-width:88px}
+    .acts{grid-template-columns:1fr 1fr;gap:7px}
+    .act{padding:11px 9px}
+    .act .t{font-size:14px}
+    .slot{height:62px}
+    #go{padding:15px;font-size:15px}
+    /* bigger tap targets */
+    .opt{padding:14px 10px;min-width:0}
+    .btnBig,.btnGhost{padding:16px}
+    .botRow{flex-wrap:wrap;gap:7px}
+    .botRow .desc{width:100%;text-align:left;order:3}
+    .botRow select{padding:9px}
+    .menuCard{padding:22px 20px}
+    .brand h1{font-size:32px;letter-spacing:.22em}
+    .brand svg{width:40px;height:40px}
+    .tag{font-size:14px;margin-bottom:20px}
+    /* collapse the log by default on phones */
+    .log{max-height:150px;flex:0 0 auto}
+    #legendPane{display:none}
+    #legendPane.show{display:block}
+    .card{min-width:0;width:calc(100vw - 32px);padding:18px 16px}
+    table{font-size:12px}
+    th,td{padding:5px 4px}
+    #tut{left:10px;right:10px;top:10px;width:auto;padding:13px 15px}
+    #tut p{font-size:12px}
+  }
+
+  /* very small phones */
+  @media (max-width: 340px) {
+    .acts{grid-template-columns:1fr}
+    .opts{gap:6px}
+    .opt .v{font-size:10px}
+    #board{height:44dvh}
+  }
+
+  /* landscape phone: go back side-by-side, the board is wider than it is tall */
+  @media (max-height: 500px) and (orientation: landscape) {
+    #game{flex-direction:row}
+    #board{flex:1;height:100dvh}
+    aside{width:300px;border-top:none;border-left:1px solid var(--line)}
+    .log{max-height:none;flex:1 1 auto}
+  }
+
 </style>
 </head>
 <body>
@@ -166,12 +300,20 @@
 <div id="menu">
   <div class="menuCard">
     <div class="brand">
-      <svg><use href="#ic-river"/></svg>
-      <h1>SILT</h1>
+      <svg><use href="#ic-river" data-logo/></svg>
+      <h1 id="mTitle">ANOD</h1>
     </div>
-    <p class="tag">A river delta euro. You ship goods to the sea — and every shipment
-      chokes the channel it used. <b>The map dies because everyone is winning.</b>
-      No hidden cards, no take-that. You lose because you misread the board.</p>
+    <p class="tag" id="mPitch"></p>
+
+    <div class="fieldset">
+      <div class="lbl">Theme</div>
+      <div class="opts" id="themeOpts">
+        <button class="opt on" data-theme="anod"><div class="k">Anód</div>
+          <div class="v">Pasig delta, c. 1400s</div></button>
+        <button class="opt" data-theme="silt"><div class="k">Silt</div>
+          <div class="v">generic river delta</div></button>
+      </div>
+    </div>
 
     <div class="fieldset">
       <div class="lbl">Players</div>
@@ -200,6 +342,14 @@
       <button class="btnBig" id="btnPlay">Play</button>
       <button class="btnGhost" id="btnTutorial">Guided first game</button>
     </div>
+    <div class="go" style="margin-top:10px">
+      <button class="btnGhost" id="btnRulesMenu">Rulebook</button>
+    </div>
+
+    <details id="gloss">
+      <summary>What the words mean</summary>
+      <div class="glossBody" id="glossBody"></div>
+    </details>
   </div>
 </div>
 
@@ -232,21 +382,22 @@
 
   <aside>
     <header>
-      <svg><use href="#ic-river"/></svg>
+      <svg><use href="#ic-river" data-logo/></svg>
       <div class="t">
-        <h2>Silt</h2>
+        <h2 id="hTitle">ANOD</h2>
         <div class="sub"><span id="rd">Round 1 / 8</span> · <span id="ph">Program</span></div>
       </div>
+      <button class="icoBtn" id="btnRules">Rules</button>
       <button class="icoBtn" id="btnQuit">Menu</button>
     </header>
 
     <div class="pane">
-      <h3>Players</h3>
+      <h3 id="hPlayers">Players</h3>
       <div id="pls"></div>
     </div>
 
     <div class="pane">
-      <h3>Your program</h3>
+      <h3 id="hProgram">Your program</h3>
       <div id="hint" class="prompt" style="display:none"></div>
       <div class="slots">
         <div class="slot" id="s0" data-slot="0"><div class="n">SLOT 1</div><div class="a">—</div></div>
@@ -257,23 +408,41 @@
     </div>
 
     <div class="pane">
-      <h3>Contracts</h3>
+      <h3 id="hContracts">Contracts</h3>
       <div id="cts"></div>
     </div>
 
     <div class="pane" id="legendPane">
-      <h3>The water</h3>
+      <h3 id="hWater">The water</h3>
       <div class="legend">
-        <span><i style="background:var(--water3)"></i>deep 3</span>
-        <span><i style="background:var(--water2)"></i>2</span>
-        <span><i style="background:var(--water1)"></i>1 — fragile</span>
-        <span><i style="background:var(--dead);outline:1px dashed #6b4a2c"></i>silted</span>
+        <span><i style="background:var(--water3)"></i><span id="legDeep">deep 3</span></span>
+        <span><i style="background:var(--water2)"></i><span id="legMid">2</span></span>
+        <span><i style="background:var(--water1)"></i><span id="legShallow">1 — fragile</span></span>
+        <span><i style="background:var(--dead);outline:1px dashed #6b4a2c"></i><span id="legDead">silted</span></span>
       </div>
     </div>
 
     <div class="log" id="log"></div>
   </aside>
 </div>
+
+<div id="book">
+      <div class="bookCard">
+        <div class="bookHead">
+          <div>
+            <div class="bookTitle" id="bkTitle"></div>
+            <div class="bookSub" id="bkSub"></div>
+          </div>
+          <button class="icoBtn" id="bkClose">Close</button>
+        </div>
+        <div class="bookBody" id="bkBody"></div>
+        <div class="bookFoot">
+          <button class="pageBtn" id="bkPrev">‹ Back</button>
+          <div class="dots" id="bkDots"></div>
+          <button class="pageBtn" id="bkNext">Next ›</button>
+        </div>
+      </div>
+    </div>
 
 <script type="module" src="./ui.js"></script>
 </body>

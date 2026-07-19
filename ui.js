@@ -5,22 +5,22 @@ import {
 } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
 import { createTutorial } from './tutorial.js';
+import { THEMES, applyTheme, nodeLabel, nodeName } from './theme.js';
+import { pages, createRulebook } from './rulebook.js';
 
 const HUMAN = 0;
 const PC = ['var(--p0)', 'var(--p1)', 'var(--p2)', 'var(--p3)'];
 const $ = (id) => document.getElementById(id);
 const NS = 'http://www.w3.org/2000/svg';
 
-const BOTS = {
-  balanced:   'Balanced — expands early, ships, patches what is dying',
-  tollkeeper: 'Tollkeeper — dredges the routes you need and charges you',
-  steward:    'Steward — maintains its own network above all',
-  expander:   'Expander — builds relentlessly, thin on maintenance',
-  turtle:     'Turtle — three stations by a mouth, never leaves',
-  defector:   'Defector — never dredges, rides on everyone else',
-};
+const BOT_KEYS = ['balanced', 'tollkeeper', 'steward', 'expander', 'turtle', 'defector'];
 
 let g, program, picking, pendingAction, seed, queue, tut, config;
+let T = THEMES.anod;          // active theme (presentation only)
+const book = createRulebook();
+
+const botName = (k) => T.bots[k].name;
+const botDesc = (k) => T.bots[k].desc;
 
 // ---------------------------------------------------------------- sprites
 
@@ -31,6 +31,7 @@ async function loadSprites() {
 
 const icon = (name, cls = '') =>
   `<svg class="${cls}"><use href="#ic-${name}"/></svg>`;
+const ico = (slot) => T.icons[slot];
 
 // ---------------------------------------------------------------- menu
 
@@ -44,17 +45,16 @@ function buildMenu() {
         <span class="dot" style="background:${PC[i + 1]}"></span>
         <span class="nm">P${i + 2}</span>
         <select data-bot="${i}">
-          ${Object.keys(BOTS).map(k =>
-            `<option value="${k}" ${config.bots[i] === k ? 'selected' : ''}>${k}</option>`).join('')}
+          ${BOT_KEYS.map(k =>
+            `<option value="${k}" ${config.bots[i] === k ? 'selected' : ''}>${botName(k)}</option>`).join('')}
         </select>
-        <span class="desc" data-desc="${i}">${BOTS[config.bots[i]].split('—')[1].trim()}</span>
+        <span class="desc" data-desc="${i}">${botDesc(config.bots[i])}</span>
       </div>`).join('');
     for (const sel of document.querySelectorAll('[data-bot]')) {
       sel.addEventListener('change', () => {
         const i = +sel.dataset.bot;
         config.bots[i] = sel.value;
-        document.querySelector(`[data-desc="${i}"]`).textContent =
-          BOTS[sel.value].split('—')[1].trim();
+        document.querySelector(`[data-desc="${i}"]`).textContent = botDesc(sel.value);
       });
     }
   };
@@ -75,11 +75,117 @@ function buildMenu() {
   }
   syncBots();
 
+  for (const b of document.querySelectorAll('[data-theme]')) {
+    b.addEventListener('click', () => {
+      setTheme(b.dataset.theme);
+      document.querySelectorAll('[data-theme]').forEach(x => x.classList.toggle('on', x === b));
+    });
+  }
   $('btnPlay').addEventListener('click', () => start(false));
   $('btnTutorial').addEventListener('click', () => start(true));
   $('btnQuit').addEventListener('click', showMenu);
   $('btnMenu').addEventListener('click', showMenu);
   $('btnAgain').addEventListener('click', () => start(false));
+  wireBook();
+}
+
+function setTheme(id) {
+  T = THEMES[id] ?? THEMES.anod;
+  applyTheme(T);
+  paintMenuText();
+  paintGlossary();
+  if (book.open) renderBook();
+  if (g && !$('game').classList.contains('hide')) render();
+}
+
+function paintMenuText() {
+  $('mTitle').textContent = T.title;
+  $('mPitch').innerHTML = T.pitch;
+  $('hTitle').textContent = T.title;
+  document.querySelectorAll('[data-logo]').forEach(u => u.setAttribute('href', `#ic-${ico('logo')}`));
+  $('legDeep').textContent = T.legend.deep;
+  $('legMid').textContent = T.legend.mid;
+  $('legShallow').textContent = T.legend.shallow;
+  $('legDead').textContent = T.legend.dead;
+  $('hPlayers').textContent = T.id === 'anod' ? 'Mga Datu' : 'Players';
+  $('hProgram').textContent = T.id === 'anod' ? 'Ang Plano' : 'Your program';
+  $('hContracts').textContent = T.terms.contract.name;
+  $('hWater').textContent = T.id === 'anod' ? 'Ang Tubig' : 'The water';
+  const bs = document.querySelector('#botRows');
+  if (bs) {
+    document.querySelectorAll('[data-bot]').forEach(sel => {
+      const i = +sel.dataset.bot;
+      sel.innerHTML = BOT_KEYS.map(k =>
+        `<option value="${k}" ${config.bots[i] === k ? 'selected' : ''}>${botName(k)}</option>`).join('');
+      document.querySelector(`[data-desc="${i}"]`).textContent = botDesc(config.bots[i]);
+    });
+  }
+}
+
+// A short glossary so the Tagalog on screen is learnable rather than opaque.
+function paintGlossary() {
+  const el2 = $('glossBody');
+  if (!el2) return;
+  if (T.id !== 'anod') {
+    $('gloss').style.display = 'none';
+    return;
+  }
+  $('gloss').style.display = '';
+  const row = (o) => `<dt>${o.name}</dt><dd>${o.gloss}</dd>`;
+  el2.innerHTML = `
+    <h5>What you do</h5>
+    <dl>${Object.values(T.actions).map(a =>
+      `<dt>${a.name}</dt><dd>${a.gloss} — ${a.note}</dd>`).join('')}</dl>
+    <h5>What you move</h5>
+    <dl>${Object.values(T.goods).map(row).join('')}</dl>
+    <h5>On the board</h5>
+    <dl>${['station','mouth','channel','silted','coins','toll','player']
+      .map(k => row(T.terms[k])).join('')}</dl>
+    <p><b>The setting.</b> The Pasig and Pampanga rivers empty into Manila Bay
+    through a shifting delta. Before Spanish contact, rival polities —
+    <b>Tundó</b>, <b>Maynilà</b>, <b>Namayan</b> — sat on that water and taxed the
+    trade moving through it. The place names on the board are theirs. The river
+    really does silt up, and dredging it really was the price of keeping a port.</p>
+    <p style="color:var(--dim2)">Place names and terms are best-effort and worth a
+    check by a native speaker before this is more than a prototype.</p>`;
+}
+
+// ---------------------------------------------------------------- rulebook
+
+function renderBook() {
+  const P = pages(T);
+  const pg = P[book.i];
+  $('book').classList.toggle('on', book.open);
+  if (!book.open) return;
+  $('bkTitle').textContent = pg.title;
+  $('bkSub').textContent = pg.sub;
+  $('bkBody').innerHTML = pg.body;
+  $('bkBody').scrollTop = 0;
+  $('bkPrev').disabled = book.i === 0;
+  $('bkNext').disabled = book.i === P.length - 1;
+  $('bkDots').innerHTML = P.map((p, i) =>
+    `<button data-page="${i}" class="${i === book.i ? 'on' : ''}" title="${p.title}"></button>`).join('');
+  for (const b of $('bkDots').querySelectorAll('[data-page]')) {
+    b.addEventListener('click', () => { book.go(+b.dataset.page); renderBook(); });
+  }
+}
+
+function openBook(i = 0) { book.show(i); renderBook(); }
+function closeBook() { book.hide(); renderBook(); }
+
+function wireBook() {
+  $('btnRules').addEventListener('click', () => openBook(0));
+  $('btnRulesMenu').addEventListener('click', () => openBook(0));
+  $('bkClose').addEventListener('click', closeBook);
+  $('bkNext').addEventListener('click', () => { book.next(pages(T).length); renderBook(); });
+  $('bkPrev').addEventListener('click', () => { book.prev(); renderBook(); });
+  $('book').addEventListener('click', (e) => { if (e.target.id === 'book') closeBook(); });
+  document.addEventListener('keydown', (e) => {
+    if (!book.open) return;
+    if (e.key === 'Escape') closeBook();
+    if (e.key === 'ArrowRight') { book.next(pages(T).length); renderBook(); }
+    if (e.key === 'ArrowLeft')  { book.prev(); renderBook(); }
+  });
 }
 
 function showMenu() {
@@ -94,7 +200,7 @@ function start(tutorial, s = Math.floor(Math.random() * 1e9)) {
   g = newGame(config.players, seed);
   g.players.forEach((p, i) => {
     p.strat = i === HUMAN ? null : config.bots[i - 1];
-    p.name = i === HUMAN ? 'You' : `${p.strat} (P${i + 1})`;
+    p.name = i === HUMAN ? (T.id === 'anod' ? 'Ikáw' : 'You') : botName(p.strat);
   });
   program = [null, null];
   picking = null;
@@ -108,7 +214,7 @@ function start(tutorial, s = Math.floor(Math.random() * 1e9)) {
   tut = createTutorial();
   if (tutorial) tut.start();
 
-  say(`Round 1 — seed ${seed}`, 'hd');
+  say(`${T.terms.round.name} 1 — seed ${seed}`, 'hd');
   render();
 }
 
@@ -163,7 +269,7 @@ function drawBoard() {
 
     if (dredgeable) {
       const hit = el('line', { x1: A.x, y1: A.y, x2: B.x, y2: B.y,
-        stroke: 'transparent', 'stroke-width': 3.2, 'data-hit': k });
+        stroke: 'transparent', 'stroke-width': 5, 'data-hit': k });
       hit.style.cursor = 'pointer';
       hit.addEventListener('click', () => resolveHuman({ channel: k }));
       svg.appendChild(hit);
@@ -214,9 +320,9 @@ function drawBoard() {
 
     // station or lighthouse art
     if (isMouth) {
-      grp.appendChild(use('#ic-mouth', n.x, n.y - 0.2, 3.6, '#8fc3d4'));
+      grp.appendChild(use(`#ic-${ico('mouth')}`, n.x, n.y - 0.2, 3.6, 'var(--salt)'));
     } else if (own !== undefined) {
-      grp.appendChild(use('#ic-station', n.x, n.y - 0.15, 3.1, PC[own]));
+      grp.appendChild(use(`#ic-${ico('station')}`, n.x, n.y - 0.15, 3.1, PC[own]));
     }
 
     // goods cubes as commodity icons
@@ -224,7 +330,7 @@ function drawBoard() {
       const c = g.cubes[n.id];
       for (let i = 0; i < c; i++) {
         const ang = -Math.PI / 2 + (i - (c - 1) / 2) * 0.5;
-        grp.appendChild(use(`#ic-${n.good}`,
+        grp.appendChild(use(`#ic-${T.goods[n.good].icon}`,
           n.x + Math.cos(ang) * 4.1, n.y + Math.sin(ang) * 4.1,
           1.9, `var(--${n.good})`));
       }
@@ -235,16 +341,16 @@ function drawBoard() {
                      ...(g.inn[n.id] ?? []).map(x => chKey(x, n.id))]
       .some(k => g.depth[k] === 0);
     if (anyDead && own !== undefined) {
-      grp.appendChild(use('#ic-silted', n.x + 2.6, n.y - 2.4, 2, '#7a5334'));
+      grp.appendChild(use(`#ic-${ico('dead')}`, n.x + 2.6, n.y - 2.4, 2, 'var(--dead)'));
     }
 
     const label = el('text', {
       x: n.x, y: n.y + (isMouth ? 6.4 : 4.9), 'text-anchor': 'middle',
-      'font-size': isMouth ? 2.3 : 1.95,
+      'font-size': isMouth ? 2.2 : (nodeLabel(T, n.id).length > 6 ? 1.55 : 1.85),
       fill: own !== undefined ? PC[own] : 'var(--dim)',
       'font-weight': own !== undefined ? 700 : 400,
     });
-    label.textContent = n.id;
+    label.textContent = nodeLabel(T, n.id);
     grp.appendChild(label);
 
     if (isMouth) {
@@ -258,13 +364,18 @@ function drawBoard() {
       }
     }
 
-    if (btargets.has(n.id)) {
+    const interactive = btargets.has(n.id) || sfrom.has(n.id);
+    if (interactive) {
       grp.style.cursor = 'pointer';
-      grp.addEventListener('click', () => resolveHuman({ node: n.id }));
-    }
-    if (sfrom.has(n.id)) {
-      grp.style.cursor = 'pointer';
-      grp.addEventListener('click', () => pickShip(n.id));
+      // Fingers are much bigger than a 2.7-unit node: add a generous invisible
+      // hit area so tapping near the node still works.
+      grp.appendChild(el('circle', {
+        cx: n.x, cy: n.y, r: 6, fill: 'transparent', 'data-hit-node': n.id,
+      }));
+      const act = btargets.has(n.id)
+        ? () => resolveHuman({ node: n.id })
+        : () => pickShip(n.id);
+      grp.addEventListener('click', act);
     }
     svg.appendChild(grp);
   }
@@ -272,36 +383,40 @@ function drawBoard() {
 
 // ---------------------------------------------------------------- panel
 
-const ACT_ICON = { dredge: 'dredge', build: 'build', ship: 'ship', survey: 'survey' };
-
 function actDesc() {
   const p = g.players[HUMAN];
+  const c = T.terms.coins.name === 'ginto' ? 'g' : 'c';
   return {
-    dredge: `+${TUNING.dredgeAmount} depth · ${TUNING.dredgeCoins}c · claims toll`,
-    build: `new station · ${buildCost(p)}c`,
-    ship: `≤${TUNING.shipCubesMax} cubes to sea`,
-    survey: `+${TUNING.surveyCoins}c · draw ${TUNING.surveyDraw} keep 1`,
+    dredge: `+${TUNING.dredgeAmount} ${T.terms.depth.name} · ${TUNING.dredgeCoins}${c} · ${T.terms.toll.name}`,
+    build: `${T.terms.station.name} · ${buildCost(p)}${c}`,
+    ship: `≤${TUNING.shipCubesMax} → ${T.terms.mouth.name}`,
+    survey: `+${TUNING.surveyCoins}${c} · ${TUNING.surveyDraw}→1`,
   };
 }
 
 function render() {
   drawBoard();
-  $('rd').textContent = `Round ${g.round} / ${TUNING.rounds}`;
-  $('ph').textContent = pendingAction ? `Choose a target` : 'Program';
+  $('rd').textContent = `${T.terms.round.name} ${g.round} / ${TUNING.rounds}`;
+  $('ph').textContent = pendingAction
+    ? (T.id === 'anod' ? 'Pumili' : 'Choose a target')
+    : (T.id === 'anod' ? 'Magplano' : 'Program');
 
   $('pls').innerHTML = g.players.map((p, i) => `
     <div class="pl ${i === HUMAN ? 'me' : ''}">
       <span class="dot" style="background:${PC[i]}"></span>
       <span class="nm">${p.name}</span>
-      <span class="st">${p.coins}c · ${p.stations.length}st · ${p.done.length}✓</span>
+      <span class="st">${p.coins}${T.terms.coins.name === 'ginto' ? 'g' : 'c'} · ${p.stations.length}${T.id === 'anod' ? 'b' : 'st'} · ${p.done.length}✓</span>
     </div>`).join('');
 
   const d = actDesc();
   $('acts').innerHTML = ['dredge', 'build', 'ship', 'survey'].map(a => `
     <button class="act" data-act="${a}" ${pendingAction ? 'disabled' : ''}>
-      ${icon(ACT_ICON[a])}
-      <span class="txt"><span class="t">${a}</span><span class="d">${d[a]}</span></span>
+      ${icon(ico(a))}
+      <span class="txt"><span class="t">${T.actions[a].name}${
+        T.actions[a].gloss ? `<em>${T.actions[a].gloss}</em>` : ''}</span>
+      <span class="d">${d[a]}</span></span>
     </button>`).join('');
+  $('go').textContent = T.id === 'anod' ? 'Itakdâ at tuparín' : 'Commit & resolve';
   for (const b of document.querySelectorAll('.act')) {
     b.addEventListener('click', () => setSlot(b.dataset.act));
   }
@@ -310,31 +425,41 @@ function render() {
     const s = $('s' + i);
     const a = program[i];
     // Keep the slot number visible even when filled — resolution order matters.
+    const slotWord = T.id === 'anod' ? 'UNA' : 'SLOT 1';
+    const slotWord2 = T.id === 'anod' ? 'IKALAWA' : 'SLOT 2';
+    const w = i === 0 ? slotWord : slotWord2;
     s.innerHTML = a
-      ? `<div class="n">SLOT ${i + 1}</div>${icon(ACT_ICON[a])}<div class="a">${a}</div>`
-      : `<div class="n">SLOT ${i + 1}</div><div class="a">—</div>`;
+      ? `<div class="n">${w}</div>${icon(ico(a))}<div class="a">${T.actions[a].name}</div>` +
+        (T.actions[a].gloss ? `<div class="g">${T.actions[a].gloss}</div>` : '')
+      : `<div class="n">${w}</div><div class="a">—</div>`;
     s.classList.toggle('on', picking === i);
     s.classList.toggle('filled', !!a);
   });
 
   const p = g.players[HUMAN];
+  const anyMouth = T.id === 'anod' ? 'kahit saáng look' : 'any mouth';
   $('cts').innerHTML = p.contracts.length
     ? p.contracts.map(c => `<div class="ct">
         <span class="vp">${Math.round(c.vp * TUNING.contractScale)}</span>
-        <span>${c.need} cubes · ${c.types} type${c.types > 1 ? 's' : ''}${c.mouth ? ` → ${c.mouth}` : ' → any mouth'}</span>
+        <span>${c.need} ${T.id === 'anod' ? 'kalakal' : 'cubes'} · ${c.types} ${T.id === 'anod' ? 'urì' : 'type'}${c.types > 1 ? 's' : ''}
+        → ${c.mouth ? nodeLabel(T, c.mouth) : anyMouth}</span>
       </div>`).join('')
-    : '<div class="ct">none — try Survey</div>';
+    : `<div class="ct">${T.id === 'anod' ? `walâ — subukan ang ${T.actions.survey.name}` : 'none — try Survey'}</div>`;
 
   $('go').disabled = !(program[0] && program[1]) || !!pendingAction;
 
   const hint = $('hint');
   if (pendingAction) {
     hint.style.display = 'block';
-    hint.textContent = {
+    hint.textContent = (T.id === 'anod' ? {
+      dredge: `Pindutín ang gintóng sapà — hukayin at angkinín ang singil.`,
+      build: `Pindutín ang tanáw na lugár upang magtayô ng balangay.`,
+      ship: `Pindutín ang iyóng balangay upang maglayág.`,
+    } : {
       dredge: 'Click a gold channel to dredge it and claim its toll.',
       build: 'Click a highlighted node to build there.',
       ship: 'Click one of your stations to ship from it.',
-    }[pendingAction] ?? '';
+    })[pendingAction] ?? '';
   } else hint.style.display = 'none';
 
   renderTutorial();
@@ -376,10 +501,17 @@ function pollTutorial() {
   if (tut?.poll(g, { program })) render();
 }
 
+// The engine logs in plain English with raw node ids. Keep the prose English so a
+// newcomer can always follow what happened — only swap ids for place names so the
+// log matches the board they are looking at.
+function localise(line) {
+  return line.replace(/\b([SUML]\d|[ABC])\b/g, (m) => nodeLabel(T, m));
+}
+
 function say(t, cls = '') {
   const d = document.createElement('div');
   if (cls) d.className = cls;
-  d.textContent = t;
+  d.textContent = localise(t);
   $('log').appendChild(d);
   $('log').scrollTop = $('log').scrollHeight;
 }
@@ -443,7 +575,8 @@ function pickShip(from) {
 }
 
 function flush() {
-  for (const l of g.log) say(l, l.startsWith('You') ? 'me' : '');
+  const me = g.players[HUMAN].name;
+  for (const l of g.log) say(l, l.startsWith(me) ? 'me' : '');
   g.log = [];
   render();
 }
@@ -463,15 +596,17 @@ function finish() {
   const s = score(g).map((x, i) => ({ ...x, i }));
   const best = Math.max(...s.map(x => x.total));
   $('final').innerHTML = `<table>
-    <tr><th>Player</th><th>Contr</th><th>Mouth</th><th>Net</th><th>Toll</th>
-        <th>Coin</th><th>Silt</th><th>Total</th></tr>
+    <tr><th>${T.terms.player.name}</th><th>${T.id === 'anod' ? 'Kasund' : 'Contr'}</th>
+        <th>${T.terms.mouth.name}</th><th>${T.id === 'anod' ? 'Lupà' : 'Net'}</th>
+        <th>${T.terms.toll.name}</th><th>${T.terms.coins.name}</th>
+        <th>${T.terms.silted.name}</th><th>${T.id === 'anod' ? 'Kabuoán' : 'Total'}</th></tr>
     ${s.map(x => `<tr class="${x.total === best ? 'win' : ''}">
       <td>${g.players[x.i].name}</td><td>${x.contracts}</td><td>${x.mouth}</td>
       <td>${x.network}</td><td>${x.held}</td><td>${x.coin}</td><td>${x.silt}</td>
       <td>${x.total}</td></tr>`).join('')}
   </table>`;
   $('ov').classList.add('on');
-  $('ph').textContent = 'Game over';
+  $('ph').textContent = T.id === 'anod' ? 'Tapós na' : 'Game over';
   tut?.stop();
   renderTutorial();
 }
@@ -499,12 +634,17 @@ window.SILT = {
   tutNext: () => { tut?.next(); render(); },
   score: () => score(g),
   seed: () => seed,
+  theme: () => T.id,
+  setTheme: (id) => setTheme(id),
+  openBook, closeBook, tuning: TUNING,
+  book: () => ({ open: book.open, page: book.i, total: pages(T).length }),
 };
 
 // Sprites must be in the DOM before any <use> resolves. Expose a readiness flag so
 // tests wait on the real thing instead of racing module evaluation.
 window.SILT.ready = loadSprites().then(() => {
   buildMenu();
+  setTheme('anod');
   window.SILT.isReady = true;
 });
 await window.SILT.ready;

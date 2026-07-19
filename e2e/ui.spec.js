@@ -9,6 +9,7 @@ const open = async (page) => {
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto('/index.html');
   await page.waitForFunction(() => window.SILT?.isReady === true);
+  await page.evaluate(() => window.SILT.setTheme('silt'));
   return errors;
 };
 
@@ -320,8 +321,8 @@ test.describe('interaction edge cases', () => {
     await page.locator('[data-act="survey"]').click();
     await page.locator('#s0').click();
     await page.locator('[data-act="dredge"]').click();
-    await expect(page.locator('#s0')).toContainText('dredge');
-    await expect(page.locator('#s1')).toContainText('survey');
+    await expect(page.locator('#s0')).toContainText(/dredge/i);
+    await expect(page.locator('#s1')).toContainText(/survey/i);
   });
 
   test('renders toll markers only for owned live channels', async ({ page }) => {
