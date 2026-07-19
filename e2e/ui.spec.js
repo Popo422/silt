@@ -608,3 +608,121 @@ test.describe('board is a river, not a graph', () => {
     expect(bad, `missing tiles: ${bad.join(', ')}`).toEqual([]);
   });
 });
+
+// Pan and zoom drive the SVG viewBox, not a CSS transform, so board coordinates
+// stay the coordinate system and hit targets keep working untransformed.
+test.describe('pan and zoom', () => {
+  const vb = (page) => page.locator('#svg').getAttribute('viewBox');
+
+  test('zoom buttons change the view and fit restores it', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    const home = await vb(page);
+    await page.locator('#zIn').click();
+    expect(await vb(page), 'zoom in should shrink the viewBox').not.toBe(home);
+    await page.locator('#zFit').click();
+    expect(await vb(page)).toBe(home);
+  });
+
+  test('the effects overlay tracks the board exactly', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    await page.locator('#zIn').click();
+    await page.locator('#zIn').click();
+    // If these ever diverge, every effect lands in the wrong place the moment
+    // you pan — a boat would sail somewhere the board is not.
+    expect(await page.locator('#fx').getAttribute('viewBox')).toBe(await vb(page));
+  });
+
+  test('dragging pans the board', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    const before = await vb(page);
+    const box = await page.locator('#svg').boundingBox();
+    await page.mouse.move(box.x + 400, box.y + 400);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 520, box.y + 470, { steps: 8 });
+    await page.mouse.up();
+    expect(await vb(page)).not.toBe(before);
+  });
+
+  test('a drag that ends on a node does not resolve the pending action', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    await page.evaluate(() => window.SILT.program('ship', 'survey'));
+    await page.evaluate(() => window.SILT.commit());
+    expect(await page.evaluate(() => window.SILT.pending())).toBe('ship');
+
+    const node = await page.locator('#svg [data-hit-node]').first().boundingBox();
+    await page.mouse.move(node.x + node.width / 2, node.y + node.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(node.x + node.width / 2 + 90, node.y + node.height / 2 + 60, { steps: 8 });
+    await page.mouse.up();
+    // A pan ends in a click on whatever is under the cursor. Without suppression
+    // every pan during a target prompt would fire the action at a random node.
+    expect(await page.evaluate(() => window.SILT.pending()),
+      'the drag resolved the action').toBe('ship');
+  });
+
+  test('a plain click still resolves a target', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    await page.evaluate(() => window.SILT.program('ship', 'survey'));
+    await page.evaluate(() => window.SILT.commit());
+    await page.locator('#svg [data-hit-node]').first().click({ force: true });
+    expect(await page.evaluate(() => window.SILT.pending())).toBe(null);
+  });
+
+  test('keyboard zooms and recentres', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    const home = await vb(page);
+    await page.keyboard.press('+');
+    expect(await vb(page)).not.toBe(home);
+    await page.keyboard.press('0');
+    expect(await vb(page)).toBe(home);
+  });
+
+  test('a new game resets the view', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    const home = await vb(page);
+    await page.locator('#zIn').click();
+    await page.locator('#btnQuit').click();
+    await page.locator('#btnPlay').click();
+    expect(await vb(page), 'a new game inherited the old pan').toBe(home);
+  });
+});
+
+// The action bar took the controls out of a 352px column. These assert the split:
+// the bar holds what you press, the sidebar holds what you read.
+test.describe('action bar layout', () => {
+  test('actions and commit live in the bar, not the sidebar', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    await expect(page.locator('#bar #acts')).toBeAttached();
+    await expect(page.locator('#bar #go')).toBeAttached();
+    await expect(page.locator('#bar .slot')).toHaveCount(2);
+    await expect(page.locator('aside #acts')).toHaveCount(0);
+  });
+
+  test('the bar stays put while the board scrolls under it', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    const before = await page.locator('#bar').boundingBox();
+    await page.locator('#zIn').click();
+    await page.locator('#zIn').click();
+    const after = await page.locator('#bar').boundingBox();
+    // Zooming must not reflow the controls out from under the cursor.
+    expect(after.y).toBe(before.y);
+    expect(after.height).toBe(before.height);
+  });
+
+  test('actions are still usable through the bar', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    await page.locator('#bar [data-act="ship"]').click();
+    await page.locator('#bar [data-act="dredge"]').click();
+    await expect(page.locator('#bar #go')).toBeEnabled();
+  });
+});

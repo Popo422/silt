@@ -409,3 +409,41 @@ test.describe('edge cases', () => {
     expect(await run()).toEqual(await run());
   });
 });
+
+// Nothing in this game is hidden — what everyone committed IS the game. Until the
+// player rows showed it, the only way to learn what an opponent played was to
+// catch log lines as they scrolled past.
+test.describe('opponent programs are visible', () => {
+  test('slots are face down before anyone commits', async ({ page }) => {
+    await boot(page);
+    await expect(page.locator('.pl .pslot')).toHaveCount(8);   // 4 players x 2
+    expect(await page.locator('.pl .pslot.on').count(),
+      'a program leaked before commit').toBe(0);
+  });
+
+  test('every player reveals both actions once the round is committed', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => window.SILT.program('survey', 'survey'));
+    await page.evaluate(() => window.SILT.commit());
+    // Survey needs no target, so the round resolves without waiting on us.
+    expect(await page.locator('.pl .pslot.on').count()).toBe(8);
+  });
+
+  test('picking an action does not reveal it to opponents early', async ({ page }) => {
+    await boot(page);
+    await page.locator('[data-act="ship"]').click();
+    // My own choice is shown in the bar slots, but nothing is revealed on the
+    // player rows until commit — otherwise the simultaneous reveal is a fiction.
+    expect(await page.locator('.pl .pslot.on').count()).toBe(0);
+    await expect(page.locator('#s0 .a')).not.toHaveText('—');
+  });
+
+  test('the reveal names the action in the active theme', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => window.SILT.program('survey', 'survey'));
+    await page.evaluate(() => window.SILT.commit());
+    const tip = await page.locator('.pl').first().locator('.prog').getAttribute('data-tip');
+    const survey = await page.evaluate(() => window.SILT.theme().actions.survey.name);
+    expect(tip).toContain(survey);
+  });
+});

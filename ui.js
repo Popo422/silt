@@ -19,6 +19,7 @@ const BOT_KEYS = ['balanced', 'tollkeeper', 'steward', 'expander', 'turtle', 'de
 let g, program, picking, pendingAction, seed, queue, tut, config;
 let roundsPlayed = 0;   // rounds fully resolved this game — drives tutorial gating
 let stepping = false;   // re-entry guard for the async resolution walker
+let committedThisRound = false;   // programs stay face-up from commit to next round
 let T = THEMES.anod;          // active theme (presentation only)
 const book = createRulebook();
 
@@ -150,6 +151,7 @@ function buildMenu() {
   wireBook();
   wireBoard();
   wireTips();
+  wirePanZoom();
 }
 
 function setTheme(id) {
@@ -265,6 +267,7 @@ function start(tutorial, s = Math.floor(Math.random() * 1e9)) {
     p.strat = i === HUMAN ? null : config.bots[i - 1];
     p.name = i === HUMAN ? (T.id === 'anod' ? 'Ikáw' : 'You') : botName(p.strat);
   });
+  committedThisRound = false;
   program = [null, null];
   picking = null;
   pendingAction = null;
@@ -273,6 +276,7 @@ function start(tutorial, s = Math.floor(Math.random() * 1e9)) {
   roundsPlayed = 0;
   fx.clear();
   setActor(null);
+  resetView();   // a new game should not inherit the last one's pan
   $('log').innerHTML = '';
   $('ov').classList.remove('on');
   $('menu').classList.add('hide');
@@ -367,6 +371,8 @@ function drawBoard() {
   const svg = $('svg');
   svg.innerHTML = '';
   ensureDefs(svg);
+  // Crosshair while aiming so the board reads as "click a target", not "drag me".
+  svg.classList.toggle('aiming', !!pendingAction);
 
   const hl = tut?.step()?.highlight?.() ?? null;
   const owner = {};
@@ -626,6 +632,115 @@ const esc = (s) => String(s)
   .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
   .replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+// ---------------------------------------------------------------- pan / zoom
+//
+// Drives the SVG viewBox rather than a CSS transform: the board's own units stay
+// the coordinate system, so hit targets, effects and getPointAtLength all keep
+// working with no conversion. A CSS scale would have forced every one of those to
+// unproject through the transform.
+//
+// No library for this — it is a viewBox and a few pointer handlers. d3-zoom would
+// be larger than the feature.
+const HOME = { x: -6, y: -6, w: 112, h: 112 };   // matches the markup
+const view = { ...HOME };
+const ZOOM = { min: 0.55, max: 4 };
+
+function applyView() {
+  $('svg').setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+  // The effects overlay must track the board exactly or every effect lands in the
+  // wrong place the moment you pan.
+  $('fx').setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+}
+
+// Zoom about a fixed point so the board grows toward the cursor rather than the
+// corner — zooming to the centre when you are looking at a mouth is disorienting.
+function zoomAt(factor, cx, cy) {
+  const scale = HOME.w / view.w;
+  const next = Math.min(ZOOM.max, Math.max(ZOOM.min, scale * factor));
+  const f = scale / next;
+  const nw = HOME.w / next, nh = HOME.h / next;
+  view.x = cx - (cx - view.x) * (nw / view.w);
+  view.y = cy - (cy - view.y) * (nh / view.h);
+  view.w = nw; view.h = nh;
+  applyView();
+}
+
+// Convert a client point to board units, so wheel-zoom tracks the cursor.
+function toBoard(clientX, clientY) {
+  const r = $('svg').getBoundingClientRect();
+  // preserveAspectRatio=meet letterboxes the viewBox; find the real drawn area.
+  const scale = Math.min(r.width / view.w, r.height / view.h);
+  const dw = view.w * scale, dh = view.h * scale;
+  const ox = r.left + (r.width - dw) / 2, oy = r.top + (r.height - dh) / 2;
+  return { x: view.x + (clientX - ox) / scale, y: view.y + (clientY - oy) / scale };
+}
+
+function resetView() { Object.assign(view, HOME); applyView(); }
+
+function wirePanZoom() {
+  const svg = $('svg');
+
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const p = toBoard(e.clientX, e.clientY);
+    zoomAt(e.deltaY < 0 ? 1.14 : 1 / 1.14, p.x, p.y);
+  }, { passive: false });
+
+  let drag = null;
+  svg.addEventListener('pointerdown', (e) => {
+    // Never start a drag while aiming an action, or the click that resolves the
+    // target gets eaten by the pan handler.
+    if (pendingAction || e.button !== 0) return;
+    drag = { id: e.pointerId, from: toBoard(e.clientX, e.clientY), moved: false };
+    svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const p = toBoard(e.clientX, e.clientY);
+    const dx = p.x - drag.from.x, dy = p.y - drag.from.y;
+    if (!drag.moved && Math.hypot(dx, dy) > 0.8) {
+      drag.moved = true;
+      svg.classList.add('dragging');
+    }
+    if (!drag.moved) return;
+    view.x -= dx; view.y -= dy;
+    applyView();
+  });
+  const endDrag = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    svg.classList.remove('dragging');
+    // A drag must not also register as a click on whatever was under the cursor.
+    if (drag.moved) suppressClick = true;
+    drag = null;
+  };
+  svg.addEventListener('pointerup', endDrag);
+  svg.addEventListener('pointercancel', endDrag);
+
+  $('zIn').addEventListener('click', () => zoomAt(1.25, view.x + view.w / 2, view.y + view.h / 2));
+  $('zOut').addEventListener('click', () => zoomAt(1 / 1.25, view.x + view.w / 2, view.y + view.h / 2));
+  $('zFit').addEventListener('click', resetView);
+
+  document.addEventListener('keydown', (e) => {
+    if (book.open || e.target.tagName === 'SELECT') return;
+    const c = view.x + view.w / 2, m = view.y + view.h / 2;
+    if (e.key === '+' || e.key === '=') zoomAt(1.25, c, m);
+    else if (e.key === '-' || e.key === '_') zoomAt(1 / 1.25, c, m);
+    else if (e.key === '0') resetView();
+    else if (e.key.startsWith('Arrow')) {
+      const step = view.w * 0.12;
+      if (e.key === 'ArrowLeft') view.x -= step;
+      if (e.key === 'ArrowRight') view.x += step;
+      if (e.key === 'ArrowUp') view.y -= step;
+      if (e.key === 'ArrowDown') view.y += step;
+      applyView();
+      e.preventDefault();
+    }
+  });
+}
+
+// Set by a completed drag so the ensuing click does not also resolve a target.
+let suppressClick = false;
+
 // ---------------------------------------------------------------- tooltips
 //
 // Delegated hover help. Anything with data-tip gets a panel after a short delay;
@@ -744,10 +859,31 @@ function render() {
 
   // "8g · 1b · 0✓" was unreadable without a key. Same numbers, but each is
   // labelled and carries a tooltip naming what it counts.
+  //
+  // Each row also shows the program that player revealed. This is a game with NO
+  // hidden information — what everyone committed IS the game — and until now the
+  // only way to learn it was to catch log lines as they scrolled past. Slots stay
+  // face-down until the round is committed, so it never leaks a decision early.
+  // Stays revealed for the whole round once committed, not just while the queue
+  // is draining. Gating on `queue` made the programs vanish the instant the last
+  // action resolved — which is exactly when you want to look at what everyone
+  // did. Cleared when the next round's programs are wiped.
+  const revealed = committedThisRound;
   $('pls').innerHTML = g.players.map((p, i) => `
     <div class="pl ${i === HUMAN ? 'me' : ''}">
       <span class="dot" style="background:${PC[i]}"></span>
       <span class="nm">${p.name}</span>
+      <span class="prog" data-tip-title="${esc(p.name)}'s program"
+            data-tip="${esc(revealed
+              ? `Committed ${p.program.filter(Boolean).map(a => T.actions[a].name).join(' then ') || 'nothing'} this round.`
+              : 'Face down until everyone commits. Nothing is hidden — you just cannot see it before you decide.')}">
+        ${[0, 1].map(s => {
+          const a = revealed ? p.program[s] : null;
+          return a
+            ? `<i class="pslot on" style="border-color:${PC[i]}">${icon(ico(a), 'pico')}</i>`
+            : `<i class="pslot"></i>`;
+        }).join('')}
+      </span>
       <span class="st">
         <b data-tip="${esc(`Gold. Spent on dredging, founding settlements and paying tolls.`)}"
            data-tip-title="Gold">${p.coins}<i>gold</i></b>
@@ -916,6 +1052,7 @@ $('go').addEventListener('click', () => {
   g.players[HUMAN].program = [...program];
   for (const p of g.players) if (p.strat) p.program = STRATEGIES[p.strat](g, p);
   say(`Round ${g.round}`, 'hd');
+  committedThisRound = true;   // programs are now public
   queue = { slot: 0, order: seatOrder(g), idx: 0, claimed: new Set() };
   step();
 });
@@ -970,6 +1107,9 @@ async function step() {
 // game mid-round. One listener on a parent that never gets replaced fixes it.
 function wireBoard() {
   $('svg').addEventListener('click', (e) => {
+    // A pan ends in a click on whatever the cursor landed on. Without this, a
+    // drag that finishes over a node would also resolve the pending action.
+    if (suppressClick) { suppressClick = false; return; }
     if (!pendingAction) return;
     const t = e.target.closest?.('[data-hit], [data-hit-node]');
     if (!t) return;
@@ -1069,6 +1209,10 @@ async function endRound() {
   pollTutorial();
   if (g.round >= TUNING.rounds) return finish();
   g.round++;
+  // NOTE: committedThisRound deliberately stays true here. The programs remain
+  // face-up while you plan the next round, because "what did everyone just do"
+  // is the main input to that decision. It flips back to false on the next
+  // commit, when the fresh programs become the ones on show.
   program = [null, null];
   picking = null;
   render();

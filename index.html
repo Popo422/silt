@@ -126,7 +126,36 @@
   }
 
   /* ---------- game ---------- */
-  #game{display:flex;height:100vh}
+  /* Column: board+sidebar row on top, action bar beneath at full width. */
+  #game{display:flex;flex-direction:column;height:100vh}
+  #top{display:flex;flex:1;min-height:0}
+
+  /* ---------- action bar ---------- */
+  #bar{flex:0 0 auto;display:flex;align-items:stretch;gap:14px;
+    padding:11px 16px;background:var(--panel);border-top:1px solid var(--line);
+    box-shadow:0 -6px 20px rgba(0,0,0,.22)}
+  .barLead{flex:0 0 auto;display:flex;flex-direction:column;gap:5px}
+  .barLead h3{margin:0;font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--dim);font-weight:600}
+  .barSlots{display:flex;gap:9px;flex:0 0 auto}
+  .barSlots .slot{width:104px;height:62px}
+  /* The four actions get the width they were starved of in a 352px column. */
+  #bar .acts{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:9px;min-width:0}
+  #bar .act{height:100%;align-items:center}
+  .barGo{flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;
+    align-items:stretch;gap:5px;min-width:196px;position:relative}
+  .barGo .stepHint{font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--gold);text-align:center}
+  .barGo #go{margin-top:0}
+  /* The target prompt floats above the bar so it cannot resize it mid-round. */
+  .barGo .prompt{position:absolute;bottom:calc(100% + 9px);right:0;width:290px;
+    margin-bottom:0;z-index:5}
+
+  @media (max-width:1100px){
+    .barSlots .slot{width:78px;height:56px}
+    .barGo{min-width:150px}
+    #bar .act .d{display:none}
+  }
   #game.hide{display:none}
   /* Aged-paper surface under the delta. This is the change that answers "why is it
      so gloomy" — a warm textured ground rather than flat near-black. The texture is
@@ -163,6 +192,20 @@
     border:1px solid var(--line);backdrop-filter:blur(3px);white-space:nowrap}
   #actor.on{opacity:1;transform:translateX(-50%) translateY(0)}
   .icoBtn.muted{opacity:.5}
+
+  /* Pan/zoom controls, bottom-left of the board so they never sit under the
+     actor badge or a floating prompt. */
+  #zoomBar{position:absolute;left:12px;bottom:12px;z-index:4;display:flex;
+    flex-direction:column;gap:5px}
+  .zoomBtn{width:31px;height:31px;border-radius:7px;border:1px solid var(--line2);
+    background:color-mix(in srgb,var(--bg) 84%,transparent);color:var(--ink);
+    font:inherit;font-size:15px;line-height:1;cursor:pointer;backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;transition:.12s}
+  .zoomBtn:hover{border-color:var(--gold);color:var(--gold)}
+  /* Grab cursor on the board itself, so it reads as draggable. */
+  #svg{cursor:grab}
+  #svg.dragging{cursor:grabbing}
+  #svg.aiming{cursor:crosshair}
 
   /* Hover help. Fixed-position so it can escape the sidebar's overflow:hidden —
      inside it, a tooltip would be clipped at the panel edge. */
@@ -279,6 +322,17 @@
   .pl.me{border-color:var(--line2)}
   .pl .dot{width:10px;height:10px;border-radius:50%;flex:none}
   .pl .nm{flex:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* Revealed program. Two face-down slots that flip to the committed actions —
+     in a game with no hidden information, what everyone played should be legible
+     at a glance rather than buried in the log. */
+  .pl .prog{display:flex;gap:3px;flex:none;cursor:help}
+  .pl .pslot{width:22px;height:22px;border-radius:5px;border:1px dashed var(--line2);
+    background:color-mix(in srgb,var(--bg) 45%,transparent);
+    display:flex;align-items:center;justify-content:center;opacity:.5}
+  .pl .pslot.on{border-style:solid;opacity:1;
+    background:color-mix(in srgb,var(--panel) 70%,var(--ink) 5%)}
+  .pl .pico{width:15px;height:15px;color:var(--dim);object-fit:contain}
+  .pl .pslot.on .pico{color:var(--ink)}
   /* Labelled stats instead of "8g · 1b · 0✓". The number stays prominent; the
      unit sits under it in small caps so the row is scannable without a key. */
   .pl .st{display:flex;gap:11px;flex:none;font-variant-numeric:tabular-nums}
@@ -453,15 +507,50 @@
   @media (max-width: 820px), (pointer: coarse) and (max-width: 1024px) {
     body{overflow:auto}
     #game{flex-direction:column;height:100dvh}
-    #board{flex:0 0 auto;height:52dvh;min-height:280px}
+    /* The board+sidebar row stacks on a phone, and the action bar keeps its own
+       band at the bottom where a thumb can reach it. */
+    #top{flex-direction:column;flex:1 1 auto;min-height:0}
+    #board{flex:0 0 auto;height:46dvh;min-height:240px}
     aside{width:100%;border-left:none;border-top:1px solid var(--line);
       flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+    /* Bar wraps: slots and commit on one line, the four actions below. */
+    #bar{flex-wrap:wrap;gap:9px;padding:9px 11px;
+      padding-bottom:max(9px,env(safe-area-inset-bottom))}
+    /* min-width:0 on every flex child. Without it the slots and the commit button
+       refuse to shrink below their content and push the page into horizontal
+       scroll on a phone. */
+    .barLead,.barSlots,.barGo,#bar .acts{min-width:0}
+    /* Two columns, not four. Four action buttons need ~503px of content and a
+       phone gives them 368 — the grid could not shrink further, so the overflow
+       went to the page instead. */
+    #bar .acts{order:3;flex:1 0 100%;grid-template-columns:1fr 1fr;gap:7px}
+    /* min-height holds the 44px touch target: trimming padding to fit the width
+       had quietly shrunk these below what a thumb can hit reliably. */
+    #bar .act{padding:9px 8px;min-height:48px}
+    #bar .act .t{font-size:13px}
+    .barLead{flex:1 1 auto}
+    .barSlots{flex:1 1 auto}
+    .barSlots .slot{flex:1;width:auto;min-width:0;height:52px}
+    .barGo{flex:1 1 130px;min-width:0}
+    .barGo #go{padding:12px 8px;font-size:13px;white-space:nowrap;
+      overflow:hidden;text-overflow:ellipsis}
+    .barGo .prompt{position:static;width:auto;margin-bottom:6px}
+    /* Zoom buttons need a real tap target on touch. */
+    .zoomBtn{width:38px;height:38px;font-size:17px}
     header{position:sticky;top:0;z-index:5;background:var(--panel)}
     .pane{padding:10px 13px}
-    /* players go horizontal to save vertical space */
-    #pls{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+    /* Players go horizontal to save vertical space. The scroller needs an
+       explicit min-width:0 or the labelled stat columns make each row far wider
+       than the phone and push the whole PAGE into horizontal scroll instead of
+       scrolling inside this strip. */
+    #pls{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;min-width:0;
+      max-width:100%;-webkit-overflow-scrolling:touch}
     .pl{margin-bottom:0;flex:0 0 auto;font-size:12px;padding:5px 8px}
     .pl .nm{max-width:88px}
+    /* Tighter stat columns on a phone: the labels still read, the row halves. */
+    .pl .st{gap:7px}
+    .pl .st b{font-size:12px}
+    .pl .st b i{font-size:7.5px;letter-spacing:.04em}
     .acts{grid-template-columns:1fr 1fr;gap:7px}
     .act{padding:11px 9px}
     .act .t{font-size:14px}
@@ -594,8 +683,14 @@
   </div>
 </div>
 
-<!-- ================= GAME ================= -->
+<!-- ================= GAME =================
+     Layout: board + reference sidebar on top, action bar across the full width
+     beneath. The whole game used to live in a 352px column while the board sat in
+     empty space — the controls you use every round were the most cramped thing on
+     screen. The bar gets the width it needs; the sidebar keeps only what you read
+     rather than what you press. -->
 <div id="game" class="hide">
+ <div id="top">
   <div id="board">
     <!-- padded viewBox: node art and labels overflow the 0..100 layout coords -->
   <svg id="svg" viewBox="-6 -6 112 112" preserveAspectRatio="xMidYMid meet"></svg>
@@ -607,6 +702,14 @@
     <!-- Whose action is currently resolving. Four players resolving in sequence
          is unreadable without this: you see effects with no author. -->
     <div id="actor" aria-live="polite"></div>
+
+    <!-- Pan/zoom. Keyboard and buttons as well as drag, because a trackpad drag
+         on a board this size is fiddly and not everyone has a wheel. -->
+    <div id="zoomBar">
+      <button class="zoomBtn" id="zIn"  data-tip="Zoom in (+ or scroll)">+</button>
+      <button class="zoomBtn" id="zOut" data-tip="Zoom out (− or scroll)">−</button>
+      <button class="zoomBtn" id="zFit" data-tip="Fit the whole delta (0)">⤢</button>
+    </div>
 
     <div id="tut">
       <div class="step" id="tutStep"></div>
@@ -648,21 +751,6 @@
          the one control pressed every single round — carried the same weight as a
          contract line. Program first and dominant; everything else is reference. -->
 
-    <!-- THE THING YOU DO -->
-    <div class="pane primary">
-      <div class="paneHead">
-        <h3 id="hProgram">Your program</h3>
-        <span class="stepHint" id="progHint">pick two</span>
-      </div>
-      <div id="hint" class="prompt" style="display:none"></div>
-      <div class="slots">
-        <div class="slot" id="s0" data-slot="0"><div class="n">SLOT 1</div><div class="a">—</div></div>
-        <div class="slot" id="s1" data-slot="1"><div class="n">SLOT 2</div><div class="a">—</div></div>
-      </div>
-      <div class="acts" id="acts"></div>
-      <button id="go" disabled>Commit &amp; resolve</button>
-    </div>
-
     <!-- WHAT YOU ARE WORKING TOWARD -->
     <div class="pane">
       <div class="paneHead">
@@ -692,6 +780,26 @@
 
     <div class="log" id="log"></div>
   </aside>
+ </div>
+
+ <!-- ACTION BAR — everything you press, across the full width.
+      Slots on the left, the four actions in the middle where they have room to be
+      real buttons, commit on the right. -->
+ <div id="bar">
+   <div class="barLead">
+     <h3 id="hProgram">Your program</h3>
+     <div class="barSlots">
+       <div class="slot" id="s0" data-slot="0"><div class="n">SLOT 1</div><div class="a">—</div></div>
+       <div class="slot" id="s1" data-slot="1"><div class="n">SLOT 2</div><div class="a">—</div></div>
+     </div>
+   </div>
+   <div class="acts" id="acts"></div>
+   <div class="barGo">
+     <div id="hint" class="prompt" style="display:none"></div>
+     <span class="stepHint" id="progHint">pick two</span>
+     <button id="go" disabled>Commit &amp; resolve</button>
+   </div>
+ </div>
 </div>
 
 <div id="book">
