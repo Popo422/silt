@@ -237,7 +237,7 @@ async function generate(prompt, w, h, seed, tries = 3) {
     if (res.status === 429 || res.status >= 500) {
       const back = 2000 * (t + 1);
       console.log(`    ${res.status}, retrying in ${back / 1000}s`);
-      await new Promise(r => setTimeout(r, back));
+      await new Promise(r => { setTimeout(r, back); });
       continue;
     }
     throw new Error(`${res.status}: ${body.slice(0, 300)}`);

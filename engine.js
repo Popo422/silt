@@ -79,7 +79,11 @@ function shuffle(arr, rand) {
 // Rank a candidate opening node: how many mouths it can reach, and how many
 // channels run through it. Used by the opening draft and exposed so the UI can
 // show the same ranking to a human drafter.
-export function startValue(id, idx, depth) {
+// `_depth` is accepted but unused: the opening draft runs before any channel has
+// silted, so every route is at full depth and factoring it in would change
+// nothing. Kept in the signature because a mid-game "where should I expand?"
+// ranking WOULD need it, and callers already pass it.
+export function startValue(id, idx, _depth) {
   const seen = new Set([id]), stack = [id], mouths = new Set();
   while (stack.length) {
     const n = stack.pop();

@@ -30,7 +30,7 @@ export function createFX(overlay, opts = {}) {
   const PC = opts.colors ?? [];
   const nodeAt = opts.nodeAt;          // (id) -> {x, y}
   let enabled = true;
-  let live = new Set();
+  const live = new Set();
 
   const add = (node, ms) => {
     overlay.appendChild(node);

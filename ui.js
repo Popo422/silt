@@ -57,7 +57,7 @@ let speed = 'normal';
 // long shipping route cannot stall the round.
 const HOLD_MAX = 420;
 const holdFor = (ms) => Math.min(HOLD_MAX, ms * 0.45) * (SPEEDS[speed] ?? 1);
-const wait = (ms) => (ms > 0 ? new Promise(r => setTimeout(r, ms)) : Promise.resolve());
+const wait = (ms) => (ms > 0 ? new Promise(r => { setTimeout(r, ms); }) : Promise.resolve());
 
 const botName = (k) => T.bots[k].name;
 const botDesc = (k) => T.bots[k].desc;
@@ -69,12 +69,6 @@ async function loadSprites() {
   $('sprites').innerHTML = await res.text();
 }
 
-const icon = (name, cls = '') =>
-  ART[name]
-    ? `<img class="art ${cls}" src="${ART[name]}" alt="" draggable="false">`
-    : `<svg class="${cls}"><use href="#ic-${name}"/></svg>`;
-const ico = (slot) => T.icons[slot];
-
 // Painted art, keyed by the same names the SVG sprite sheet uses.
 //
 // Only covers pieces where a painted sprite beats a flat glyph. Board markers and
@@ -82,6 +76,10 @@ const ico = (slot) => T.icons[slot];
 // detail collapses into a coloured blob and a crisp SVG shape wins. Anything not
 // listed here falls through to the sprite sheet, so this table can grow one entry
 // at a time without touching a call site.
+//
+// Declared BEFORE icon() reads it. It worked either way because icon() is not
+// called until after module evaluation, but a const referenced above its
+// declaration is a temporal-dead-zone crash waiting for someone to move a call.
 const ART = {
   bangka:  './assets/art/art-ship-cut.png',
   hukay:   './assets/art/art-dredge-cut.png',
@@ -96,6 +94,12 @@ const ART = {
   grain:   './assets/art/art-grain-cut.png',
   salt:    './assets/art/art-salt-cut.png',
 };
+
+const icon = (name, cls = '') =>
+  ART[name]
+    ? `<img class="art ${cls}" src="${ART[name]}" alt="" draggable="false">`
+    : `<svg class="${cls}"><use href="#ic-${name}"/></svg>`;
+const ico = (slot) => T.icons[slot];
 
 // SVG <image> for board use. Same signature as use() so the two are swappable.
 const artImage = (name, x, y, size) => el('image', {
@@ -625,6 +629,10 @@ async function step() {
       await flush({ actor: pi });
     }
   } finally {
+    // The guard at the top of this function is a synchronous check-then-set with
+    // no await between, so no other task can interleave. The rule cannot see
+    // that. Clearing here is what stops a thrown error wedging every future round.
+    // eslint-disable-next-line require-atomic-updates
     stepping = false;
   }
 }

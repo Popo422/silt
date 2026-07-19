@@ -9,10 +9,15 @@
     "e2e": "playwright test",
     "sim": "node sim.mjs 400",
     "analyze": "node analyze.mjs",
-    "play": "npx --yes http-server . -p 5178 -c-1 -o /index.html"
+    "play": "npx --yes http-server . -p 5178 -c-1 -o /index.html",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "check": "npm run lint && npm run test && npm run e2e"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
+    "eslint": "^9.39.5",
+    "globals": "^17.7.0",
     "vitest": "^4.1.10"
   }
 }

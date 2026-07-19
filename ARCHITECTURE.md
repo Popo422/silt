@@ -123,13 +123,25 @@ exactly as the buttons paint them — it exists because the tutorial once said
 ## Running things
 
 ```
-npx vitest run                 unit tests (rules, copy)
-npx playwright test            e2e (140 tests, ~2min)
+npm run lint                   eslint
+npm test                       unit tests (rules, copy, module boundaries)
+npm run e2e                    end-to-end (~2min)
+npm run check                  all three, in order
 node sim.mjs                   balance across bot matchups
 node sweep.mjs                 parameter sweep
 node audit.mjs                 how often each rule actually fires
 node gen-assets.mjs            list asset batches + cost
 ```
+
+CI runs lint, unit, e2e and a balance sim on every push. The balance job exists
+because the engine is pure and therefore reproducible — same seeds, same numbers —
+so a rules change that quietly wrecks the game surfaces immediately rather than
+three commits later.
+
+The lint config is deliberately narrow: it catches temporal-dead-zone reads,
+unused bindings left after a refactor, and identical ternary branches. It does not
+enforce formatting, because nobody has argued about formatting and a formatter
+would produce a huge diff for no defect caught.
 
 `playthrough.spec.js` deliberately runs **with animation on** — its whole job is
 proving the game is completable at the speed a human plays. The other suites run

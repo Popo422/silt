@@ -1,0 +1,65 @@
+# CI. Everything that can fail silently gets checked on every push.
+#
+# All of these ran only when someone remembered to run them, which is exactly how
+# a regression lands on master. They are cheap: the whole workflow is a couple of
+# minutes.
+
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  lint-and-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npx eslint .
+      - name: Unit tests
+        run: npx vitest run
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Only chromium: the suite targets one browser and installing three would
+      # triple the setup time for no extra coverage.
+      - run: npx playwright install --with-deps chromium
+      - name: End-to-end tests
+        run: npx playwright test --workers=2
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  balance:
+    # The engine is pure, so balance is reproducible: same seeds, same numbers.
+    # A rules change that quietly wrecks the game shows up here rather than three
+    # commits later.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Balance simulation
+        run: node sim.mjs 200
+      - name: Rule firing rates
+        run: node audit.mjs

@@ -2,7 +2,6 @@
 // complexity with no gameplay behind it. Run: node audit.mjs
 import { TUNING, newGame, execute, siltPhase, regrowPhase, upkeepPhase, seatOrder, score } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
-import { CHANNELS } from './graph.js';
 
 const N = 300, FIELD = ['balanced','tollkeeper','expander','steward'];
 const hit = {};

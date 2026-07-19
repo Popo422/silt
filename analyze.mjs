@@ -1,4 +1,4 @@
-import { NODES, CHANNELS, MOUTHS, buildIndex, chKey, NODE_BY_ID } from './graph.js';
+import { NODES, MOUTHS, buildIndex, chKey, NODE_BY_ID } from './graph.js';
 
 const { out } = buildIndex();
 

@@ -1,7 +1,7 @@
 // SILT — bot strategies. Each is a distinct archetype so sims expose
 // whether the design punishes/rewards what it should.
 import { TUNING, buildCost, buildTargets, dredgeTargets, shipOptions, canReachMouth } from './engine.js';
-import { chKey, NODE_BY_ID, MOUTHS } from './graph.js';
+import { chKey, NODE_BY_ID } from './graph.js';
 
 // Pick the action pair for the round, then per-slot choices are made live.
 export const STRATEGIES = {

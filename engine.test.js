@@ -772,10 +772,14 @@ describe('invariants over a full game', () => {
             a === 'ship'   ? { option: shipOptions(g, p)[0] } :
             a === 'build'  ? { node: buildTargets(g, p)[0] } :
             a === 'dredge' ? { channel: dredgeTargets(g)[0] } : {};
-          const before = { built: p.stations.length };
+          const before = { built: p.stations.length, cubes: totalCubes() };
           execute(g, pi, a, choice, claimed);
+          // Count what building ACTUALLY added, not what it nominally grants.
+          // The engine caps a node at cubesPerNode, so settling a node that is
+          // already near capacity absorbs less than buildCubeBonus — assuming the
+          // full bonus made this assertion fail by exactly that shortfall.
           if (a === 'build' && p.stations.length > before.built) {
-            expected += Math.min(TUNING.buildCubeBonus, TUNING.cubesPerNode);
+            expected += totalCubes() - before.cubes;
           }
         }
       }
@@ -791,6 +795,12 @@ describe('invariants over a full game', () => {
         expect(g.depth[k]).toBeGreaterThanOrEqual(0);
         expect(g.depth[k]).toBeLessThanOrEqual(TUNING.maxDepth);
       }
+      // The half of this test its own name promised. `expected` was accumulated
+      // every round and then never checked — the lint pass found it. Cubes only
+      // enter play from building and regrowth, and shipping MOVES them into a
+      // player's delivered pile rather than destroying them, so the running total
+      // must match exactly. A mismatch means a cube was duplicated or lost.
+      expect(totalCubes(), `cube count diverged in round ${r}`).toBe(expected);
     }
     expect(g.players.every(p => p.stations.length === new Set(p.stations).size)).toBe(true);
   });

@@ -1,7 +1,7 @@
 // SILT — headless simulator. Answers the balance questions with numbers.
 import { newGame, execute, siltPhase, regrowPhase, upkeepPhase, score, seatOrder, TUNING } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
-import { CHANNELS, chKey } from './graph.js';
+import { CHANNELS } from './graph.js';
 
 export function playGame(strats, seed) {
   const g = newGame(strats.length, seed);

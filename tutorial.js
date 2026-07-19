@@ -29,7 +29,6 @@ const withGloss = (o) =>
     ? `${o.name} (${o.gloss})` : o.name;
 
 const act = (T, k) => withGloss(T.actions[k]);
-const term = (T, k) => withGloss(T.terms[k]);
 // Bare name, for the second mention onward once the gloss has been given.
 const actName = (T, k) => T.actions[k].name;
 // Goods read as the everyday English word — "bamboo, rice and salt" on ANOD.
