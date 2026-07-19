@@ -194,9 +194,11 @@
   #tut button{padding:8px 14px;border-radius:6px;font:inherit;font-size:12px;cursor:pointer;
     font-weight:600}
   #tutNext{background:var(--gold);border:1px solid var(--gold);color:#0b1316}
-  #tutSkip{background:transparent;border:1px solid var(--line2);color:var(--dim)}
+  #tutSkip,#tutSkipStep{background:transparent;border:1px solid var(--line2);color:var(--dim)}
+  #tutSkipStep:hover,#tutSkip:hover{color:var(--ink);border-color:var(--gold)}
   #tutSkip:hover{color:var(--ink)}
-  #tut .wait{font-size:11px;color:var(--gold);opacity:.85}
+  #tut .wait{font-size:11px;color:var(--gold);opacity:.9;flex:1;line-height:1.35}
+  #tut .row{flex-wrap:wrap}
 
 
   /* ---------- rulebook ---------- */
@@ -259,6 +261,7 @@
   .uiPulse{box-shadow:0 0 0 2px var(--gold),0 0 16px rgba(224,164,88,.45)!important;
     border-radius:7px}
   text{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;user-select:none}
+  #svg .empty{opacity:.2}
   .node{cursor:default}
 
   /* ---------- mobile ----------
@@ -392,6 +395,7 @@
       <p id="tutBody"></p>
       <div class="row">
         <button id="tutNext">Next</button>
+        <button id="tutSkipStep">Skip step</button>
         <button id="tutSkip">Skip tutorial</button>
         <span class="wait" id="tutWait"></span>
       </div>

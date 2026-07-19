@@ -185,7 +185,10 @@ describe('build', () => {
     expect(p.coins).toBe(before);
   });
 
-  it('pays the loser of a collision instead of blocking them dead', () => {
+  // The consolation payout was cut: it fired 0.00 times per game over 300 sims,
+  // because nodes are never contested. Two players still cannot take the same
+  // node in one slot, and the loser simply keeps their money.
+  it('stops a second player taking a node already claimed this slot', () => {
     const claimed = new Set();
     const target = buildTargets(g, p)[0];
     execute(g, 0, 'build', { node: target }, claimed);
@@ -194,8 +197,8 @@ describe('build', () => {
     q.stations = [...p.stations];              // make it legal for q too
     const before = q.coins, count = q.stations.length;
     execute(g, 1, 'build', { node: target }, claimed);
-    expect(q.coins).toBe(before + TUNING.collisionPayout);
-    expect(q.stations.length).toBe(count);     // no station, but no loss either
+    expect(q.stations.length).toBe(count);     // did not get the node
+    expect(q.coins).toBe(before);              // and was not charged for it
   });
 
   it('tolerates a null choice', () => {

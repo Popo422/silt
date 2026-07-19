@@ -1,78 +1,92 @@
-// SILT — guided first game.
-// Each step shows a message and waits for a real condition on game state, so the
-// player learns by doing rather than by reading a wall of text. `check` is polled
-// after every UI render; when it returns true the step advances.
+// SILT / ANOD — guided first game.
+//
+// Design rule: teach by doing. Every step is either a one-line orientation note
+// or a single concrete instruction that the player completes on the real board.
+// Nothing here explains a rule the player cannot act on immediately — that is
+// what the rulebook is for.
+//
+// `check(g, ui)` is polled after each render. Returning true advances the step.
+// A step with no `check` shows a Next button instead.
+//
+// The `ui` object carries UI-owned state (program, roundsPlayed). Do NOT gate on
+// transient engine state like g.log — flush() clears it before polling, which is
+// exactly how the old 'commit' step became impossible to complete.
 
 export const STEPS = [
   {
     id: 'welcome',
-    title: 'The delta is your economy and your enemy',
-    body: 'You ship goods down a river delta to the sea. Every shipment silts the '
-        + 'channels it uses. The map degrades because everyone is succeeding.',
+    title: 'Your river is also your problem',
+    body: 'You move goods downstream to the sea. Every trip silts the channel you '
+        + 'used. Nothing is hidden — you lose by misreading the board, not by ambush.',
     highlight: null,
-    check: null,            // advance on click
+    check: null,
   },
   {
     id: 'your-station',
-    title: 'This is your station',
-    body: 'The glowing dock is yours. The small cubes beside a node are its goods — '
-        + 'timber, grain, or salt. Ship those to a lighthouse to score.',
+    title: 'This one is yours',
+    body: 'The pulsing settlement is your starting position. The badge above a node '
+        + 'shows how many goods are sitting there, and which kind.',
     highlight: () => ({ kind: 'node', ids: 'own' }),
     check: null,
   },
   {
     id: 'mouths',
-    title: 'Three mouths, three markets',
-    body: 'The lighthouses at the bottom are the sea. Delivering there fills contracts '
-        + 'and wins majorities. Every route ends at one of them.',
+    title: 'Sell at the bottom',
+    body: 'The three islands at the bottom are the sea. Everything you ship ends at '
+        + 'one of them. That is where contracts are filled and points are scored.',
     highlight: () => ({ kind: 'node', ids: ['A', 'B', 'C'] }),
     check: null,
   },
   {
-    id: 'program-ship',
-    title: 'Program your first action',
-    body: 'You commit TWO actions per round, face down, before anything resolves. '
-        + 'Click SHIP to put it in slot 1.',
+    id: 'pick-ship',
+    title: 'Now do it — pick SHIP',
+    body: 'You choose two actions each round, before anyone reveals. '
+        + 'Click the SHIP action to put it in your first slot.',
     highlight: () => ({ kind: 'ui', sel: '[data-act="ship"]' }),
-    check: (g, ui) => ui.program[0] === 'ship',
+    check: (g, ui) => ui.program.includes('ship'),
+    hint: 'Click the SHIP button in the panel on the right.',
   },
   {
-    id: 'program-second',
-    title: 'Now fill slot 2',
-    body: 'Pick anything. DREDGE repairs a channel and claims its toll. BUILD expands. '
-        + 'SURVEY draws contracts. You cannot change these once you commit.',
+    id: 'pick-second',
+    title: 'Fill the second slot',
+    body: 'Anything works. DREDGE repairs a channel and lets you charge others to '
+        + 'use it. SETTLE builds a new site. SURVEY takes money and contracts.',
     highlight: () => ({ kind: 'ui', sel: '#acts' }),
     check: (g, ui) => !!ui.program[0] && !!ui.program[1],
+    hint: 'Pick any second action.',
   },
   {
     id: 'commit',
-    title: 'Commit and watch',
-    body: 'All players reveal at once and resolve in seat order. This is where you '
-        + 'find out whether you guessed right about everyone else.',
+    title: 'Commit — this is the locked-in part',
+    body: 'Press commit. Everyone reveals at once and resolves in order. You cannot '
+        + 'change your mind halfway through, which is the whole tension of the game.',
     highlight: () => ({ kind: 'ui', sel: '#go' }),
-    check: (g) => g.round > 1 || g.log.length > 0,
+    check: (g, ui) => ui.roundsPlayed >= 1,
+    hint: 'Press "Commit & resolve" to play the round out.',
   },
   {
-    id: 'silt',
+    id: 'read-water',
     title: 'Read the water',
-    body: 'Thick blue is deep. Thin grey is depth 1 — one more shipment kills it. '
-        + 'Dashed brown is SILTED: gone permanently, and it can never be reopened.',
+    body: 'Look at the channels now. Thick means deep. Thin and pale means depth 1 — '
+        + 'one more trip kills it. Dashed brown is dead permanently, and nothing can '
+        + 'reopen it.',
     highlight: () => ({ kind: 'legend' }),
     check: null,
   },
   {
     id: 'tolls',
-    title: 'Dredging is an investment',
-    body: 'When you dredge, you claim that channel. A coloured dot marks the owner. '
-        + 'Anyone else shipping through it pays you a toll, and you score it at the end.',
+    title: 'Dredging is a business',
+    body: 'When you dredge, you claim that channel and a dot in your colour appears '
+        + 'on it. Everyone else pays you to ship through it, and you score it at the '
+        + 'end if you keep it deep.',
     highlight: () => ({ kind: 'rights' }),
     check: null,
   },
   {
     id: 'free',
-    title: 'You are on your own',
-    body: 'Eight rounds. Contracts are worth the most, so plan routes that fill them '
-        + 'before the water you need disappears. Good luck.',
+    title: 'That is the whole game',
+    body: 'Fill contracts before the water you need disappears. Press Rules any time '
+        + 'for the full rulebook. Good luck.',
     highlight: null,
     check: null,
   },
@@ -85,7 +99,6 @@ export function createTutorial() {
     start() { this.active = true; this.i = 0; },
     stop() { this.active = false; },
     step() { return this.active ? STEPS[this.i] : null; },
-    // Returns true if the step changed, so the caller knows to re-render.
     poll(g, ui) {
       if (!this.active) return false;
       const s = STEPS[this.i];

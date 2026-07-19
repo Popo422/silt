@@ -171,8 +171,10 @@ test.describe('tutorial', () => {
     for (let i = 0; i < 3; i++) await page.locator('#tutNext').click();
     await expect(page.locator('#tutStep')).toHaveText('Step 4 of 9');
     await expect(page.locator('#tutNext')).toBeHidden();
-    await expect(page.locator('#tutWait')).toContainText('Complete the action');
-    // the gate is SHIP specifically — a different action must not advance it
+    // A gated step tells you what to do and offers an escape hatch.
+    await expect(page.locator('#tutWait')).not.toBeEmpty();
+    await expect(page.locator('#tutSkipStep')).toBeVisible();
+    // The gate is SHIP specifically — a different action must not advance it.
     await page.locator('[data-act="survey"]').click();
     await expect(page.locator('#tutStep')).toHaveText('Step 4 of 9');
   });

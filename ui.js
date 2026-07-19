@@ -16,6 +16,7 @@ const NS = 'http://www.w3.org/2000/svg';
 const BOT_KEYS = ['balanced', 'tollkeeper', 'steward', 'expander', 'turtle', 'defector'];
 
 let g, program, picking, pendingAction, seed, queue, tut, config;
+let roundsPlayed = 0;   // rounds fully resolved this game — drives tutorial gating
 let T = THEMES.anod;          // active theme (presentation only)
 const book = createRulebook();
 
@@ -206,6 +207,7 @@ function start(tutorial, s = Math.floor(Math.random() * 1e9)) {
   picking = null;
   pendingAction = null;
   queue = null;
+  roundsPlayed = 0;
   $('log').innerHTML = '';
   $('ov').classList.remove('on');
   $('menu').classList.add('hide');
@@ -309,7 +311,7 @@ function drawBoard() {
         ? g.players[HUMAN].stations.includes(n.id)
         : hl.ids?.includes?.(n.id)));
 
-    const r = isMouth ? 3.6 : 2.7;
+    const r = isMouth ? 4.2 : 3.3;
     let fill = '#152329', stroke = 'var(--line2)', sw = 0.28;
     if (isMouth) { fill = '#16303a'; stroke = '#3f6b7a'; }
     if (own !== undefined) { stroke = PC[own]; sw = 0.62; fill = '#16272e'; }
@@ -320,19 +322,33 @@ function drawBoard() {
 
     // station or lighthouse art
     if (isMouth) {
-      grp.appendChild(use(`#ic-${ico('mouth')}`, n.x, n.y - 0.2, 3.6, 'var(--salt)'));
+      grp.appendChild(use(`#ic-${ico('mouth')}`, n.x, n.y - 0.2, 4.4, 'var(--salt)'));
     } else if (own !== undefined) {
-      grp.appendChild(use(`#ic-${ico('station')}`, n.x, n.y - 0.15, 3.1, PC[own]));
+      grp.appendChild(use(`#ic-${ico('station')}`, n.x, n.y - 0.1, 3.9, PC[own]));
     }
 
-    // goods cubes as commodity icons
+    // Goods: one legible badge instead of a scatter of 1.9-unit icons. Counting
+    // four tiny sprites at a glance was the single worst readability problem on
+    // the board — a count plus one commodity icon reads instantly.
     if (!isMouth) {
       const c = g.cubes[n.id];
-      for (let i = 0; i < c; i++) {
-        const ang = -Math.PI / 2 + (i - (c - 1) / 2) * 0.5;
-        grp.appendChild(use(`#ic-${T.goods[n.good].icon}`,
-          n.x + Math.cos(ang) * 4.1, n.y + Math.sin(ang) * 4.1,
-          1.9, `var(--${n.good})`));
+      const col = `var(--${n.good})`;
+      const bx = n.x, by = n.y - 4.6;
+      if (c > 0) {
+        grp.appendChild(el('rect', {
+          x: bx - 2.9, y: by - 1.55, width: 5.8, height: 3.1, rx: 1.55,
+          fill: 'var(--panel2)', stroke: col, 'stroke-width': 0.22, opacity: 0.96,
+        }));
+        grp.appendChild(use(`#ic-${T.goods[n.good].icon}`, bx - 1.35, by, 2.2, col));
+        const cnt = el('text', {
+          x: bx + 1.1, y: by + 0.78, 'text-anchor': 'middle',
+          'font-size': 2.2, fill: col, 'font-weight': 700,
+        });
+        cnt.textContent = c;
+        grp.appendChild(cnt);
+      } else {
+        // Empty node: show the commodity ghosted so the map still reads.
+        grp.appendChild(use(`#ic-${T.goods[n.good].icon}`, bx, by, 2.1, col, 'empty'));
       }
     }
 
@@ -341,14 +357,16 @@ function drawBoard() {
                      ...(g.inn[n.id] ?? []).map(x => chKey(x, n.id))]
       .some(k => g.depth[k] === 0);
     if (anyDead && own !== undefined) {
-      grp.appendChild(use(`#ic-${ico('dead')}`, n.x + 2.6, n.y - 2.4, 2, 'var(--dead)'));
+      grp.appendChild(use(`#ic-${ico('dead')}`, n.x + 3.2, n.y + 2.6, 2.4, '#8a5f3a'));
     }
 
     const label = el('text', {
-      x: n.x, y: n.y + (isMouth ? 6.4 : 4.9), 'text-anchor': 'middle',
-      'font-size': isMouth ? 2.2 : (nodeLabel(T, n.id).length > 6 ? 1.55 : 1.85),
-      fill: own !== undefined ? PC[own] : 'var(--dim)',
-      'font-weight': own !== undefined ? 700 : 400,
+      x: n.x, y: n.y + (isMouth ? 7.4 : 6.1), 'text-anchor': 'middle',
+      'font-size': isMouth ? 2.5 : (nodeLabel(T, n.id).length > 7 ? 1.8 : 2.05),
+      fill: own !== undefined ? PC[own] : '#9fb0a8',
+      'font-weight': own !== undefined ? 700 : 500,
+      // Halo so place names stay readable where they cross a channel.
+      stroke: 'var(--bg)', 'stroke-width': 0.6, 'paint-order': 'stroke',
     });
     label.textContent = nodeLabel(T, n.id);
     grp.appendChild(label);
@@ -357,8 +375,8 @@ function drawBoard() {
       const tot = g.players.reduce((s, p) =>
         s + p.delivered[n.id].timber + p.delivered[n.id].grain + p.delivered[n.id].salt, 0);
       if (tot) {
-        const t = el('text', { x: n.x, y: n.y + 9.2, 'text-anchor': 'middle',
-          'font-size': 1.9, fill: 'var(--dim)' });
+        const t = el('text', { x: n.x, y: n.y + 10.2, 'text-anchor': 'middle',
+          'font-size': 2.1, fill: 'var(--dim)' });
         t.textContent = `${tot} delivered`;
         grp.appendChild(t);
       }
@@ -476,9 +494,12 @@ function renderTutorial() {
   $('tutStep').textContent = `Step ${i} of ${n}`;
   $('tutTitle').textContent = s.title;
   $('tutBody').textContent = s.body;
+  // A gated step shows what to do, plus an always-available escape so the
+  // tutorial can never trap the player if a condition misfires.
   $('tutNext').style.display = s.check ? 'none' : '';
   $('tutNext').textContent = tut.isLast() ? 'Start playing' : 'Next';
-  $('tutWait').textContent = s.check ? 'Complete the action to continue…' : '';
+  $('tutSkipStep').style.display = s.check ? '' : 'none';
+  $('tutWait').textContent = s.check ? (s.hint ?? 'Complete the action to continue…') : '';
 
   const hl = s.highlight?.();
   if (hl?.kind === 'ui') document.querySelector(hl.sel)?.classList.add('uiPulse');
@@ -498,7 +519,7 @@ for (const s of document.querySelectorAll('.slot')) {
 }
 
 function pollTutorial() {
-  if (tut?.poll(g, { program })) render();
+  if (tut?.poll(g, { program, roundsPlayed })) render();
 }
 
 // The engine logs in plain English with raw node ids. Keep the prose English so a
@@ -583,6 +604,7 @@ function flush() {
 
 function endRound() {
   siltPhase(g); regrowPhase(g); upkeepPhase(g);
+  roundsPlayed++;
   flush();
   pollTutorial();
   if (g.round >= TUNING.rounds) return finish();
@@ -613,6 +635,7 @@ function finish() {
 
 $('tutNext').addEventListener('click', () => { tut?.next(); render(); });
 $('tutSkip').addEventListener('click', () => { tut?.stop(); render(); });
+$('tutSkipStep').addEventListener('click', () => { tut?.next(); render(); });
 
 // ---------------------------------------------------------------- test hooks
 

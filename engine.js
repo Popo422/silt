@@ -24,11 +24,13 @@ export const TUNING = {
   maxDepth: 3,
   siltPerShip: 1,           // depth lost by each channel that carried cargo
   siltDownstream: false,    // rejected in sweep A: severs the delta, 0% live stations
+  // Also tried: silt settling between slots, to let a route die before your second
+  // action fires. Rejected — ship failures stayed at 0.00/game, so it added no
+  // tension, just 1.7 more dead channels and -2.6 score.
   tollPerShip: 2,           // coins paid to a channel's rights-holder when others ship through
   rightsEnabled: true,      // dredging claims a channel; others pay you to use it
   rightsVP: 2,              // VP per channel you still hold at depth>=2 at game end
   contractScale: 2,         // contracts sat at ~22% of score; target is ~45%
-  collisionPayout: 3,
   handLimit: 4,
   vpPerCoins: 5,
   mouthVP: [12, 6, 2],      // raise the contested-delivery stakes
@@ -271,9 +273,13 @@ export function execute(g, pi, action, choice, claimed) {
       const node = choice?.node;
       const cost = buildCost(p);
       if (!node) { g.log.push(`${p.name} build fizzles`); return; }
+      // Two players cannot take the same node in one slot. There used to be a
+      // consolation payout here, but it fired 0.00 times per game across 300
+      // simulated games — nodes are simply never contested. The real contested
+      // resource is channels, which the dredging-rights rule already handles
+      // (14.3 claims/game). Cut as dead rules weight.
       if (claimed.has(node)) {
-        p.coins += TUNING.collisionPayout;
-        g.log.push(`${p.name} blocked at ${node} — takes ${TUNING.collisionPayout}c`);
+        g.log.push(`${p.name} cannot build ${node} — just taken`);
         return;
       }
       if (p.coins < cost || !buildTargets(g, p).includes(node)) { g.log.push(`${p.name} cannot build ${node}`); return; }
