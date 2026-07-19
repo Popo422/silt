@@ -16,8 +16,20 @@ npm run play      # opens at localhost:5178
 ```
 
 Pick your table from the menu — 2–4 players, each opponent set to one of six AI
-archetypes, and a 5/8/11-round length. **Guided first game** walks you through the
-rules step by step, waiting on real actions rather than just showing text.
+archetypes, and a 5/8/11-round length.
+
+Three ways in, depending on how you like to learn:
+
+- **Guided first game** — walks you through the rules step by step, waiting on
+  real actions rather than just showing text.
+- **Watch** — the bots play a full game while it is explained. Opens by teaching
+  the goal and the four actions on a still board, then narrates what happens.
+  A **Voice** button reads the captions aloud using whatever speech voices your
+  OS has; it is off by default and remembered.
+- **Rules** — the reference, with figures drawn using the board's own geometry.
+
+Hover anything you do not recognise. Every node, channel, action and contract
+explains itself.
 
 ---
 
@@ -59,19 +71,51 @@ Stations score **nothing** on their own. Only working routes count.
 
 ## Repo layout
 
+**Rules** — no DOM, no rendering. `sim.mjs` plays 200 games a second because of this.
+
 | File | What it is |
 |---|---|
 | `graph.js` | Delta topology — 20 nodes, 31 channels, 3 mouths |
 | `engine.js` | Pure rules engine. All tuning constants live in `TUNING` |
-| `ai.js` | Five bot archetypes used to stress the balance |
+| `ai.js` | Six bot archetypes used to stress the balance |
+
+**Presentation** — may read game state, never changes it.
+
+| File | What it is |
+|---|---|
 | `index.html` / `ui.js` | Browser prototype (SVG, no build step) |
-| `tutorial.js` | Guided-first-game script, gated on real game state |
-| `assets/` | Icon sprite sheet + credits (`build-sprites.mjs` regenerates) |
-| `engine.test.js` | 93 unit tests |
+| `board.js` | Board renderer. Takes a ctx, reads no globals |
+| `panel.js` | Sidebar and action bar rendering |
+| `fx.js` | Effects overlay — what you watch during resolution |
+| `panzoom.js` | Pan/zoom via SVG viewBox. Game-agnostic |
+| `tips.js` | Delegated hover help (`data-tip`) |
+| `theme.js` | Vocabulary and palette. SILT (English) / ANOD (Tagalog) |
+
+**Teaching** — three routes in, for three kinds of person.
+
+| File | What it is |
+|---|---|
+| `tutorial.js` | Guided first game, gated on real game state |
+| `rulebook.js` / `diagrams.js` | Reference pages, figures drawn with the board's own curves |
+| `demo.js` | Watch mode: a real game the bots play while it is narrated |
+| `narration.js` | What the demo says and when — the script, not the projector |
+| `speech.js` | Optional read-aloud via the browser's speechSynthesis |
+
+**Tooling**
+
+| File | What it is |
+|---|---|
+| `engine.test.js` | 106 unit tests, including module-boundary and line-cap guards |
 | `e2e/game.spec.js` | Rules and board Playwright tests |
 | `e2e/ui.spec.js` | Menu, tutorial, assets, responsiveness |
+| `e2e/demo.spec.js` | Watch mode, narration and speech |
 | `sim.mjs` | Headless balance simulator |
 | `analyze.mjs` | Topology analysis — chokepoints, route counts |
+| `gen-assets.mjs` / `prep-art.mjs` / `pick-tiles.mjs` | Art generation and scoring |
+| `assets/` | Icon sprite sheet + credits (`build-sprites.mjs` regenerates) |
+
+See `ARCHITECTURE.md` before adding a module — the boundaries above are enforced
+by tests, not convention.
 
 ```bash
 npm test          # unit
