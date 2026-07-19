@@ -174,6 +174,21 @@ const BATCHES = {
     },
   },
 
+  // UI materials. The interface reused one paper scan for every surface, which is
+  // why it still read flat: real board games are made of several materials, and
+  // the difference between them is most of what makes a table look inviting.
+  // Table under everything, wood for the frame, leather for cards.
+  mat: {
+    size: [512, 512],
+    prompts: {
+      'mat-wood':    TILE('dark walnut wood grain, straight fine grain, matte finish'),
+      'mat-wood-old':TILE('worn oak board, visible grain and faint scratches, warm brown'),
+      'mat-leather': TILE('dark brown tooled leather, fine pebbled grain'),
+      'mat-felt':    TILE('deep green baize table felt, soft even fibre'),
+      'mat-linen':   TILE('coarse natural linen weave, warm undyed fibre'),
+    },
+  },
+
   // Board furniture — the pieces that sit on the map itself.
   board: {
     size: [768, 768],

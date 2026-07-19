@@ -523,7 +523,7 @@ describe('survey', () => {
   });
 
   it('returns unkept cards to the deck', () => {
-    const g = newGame(3, 502), p = g.players[0];
+    const g = newGame(3, 502);
     const size = g.deck.length;
     execute(g, 0, 'survey', {}, noClaim());
     expect(g.deck.length).toBe(size - 1);   // drew surveyDraw, kept 1, returned rest

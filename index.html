@@ -24,22 +24,31 @@
   /* Menu gets the paper too, so the first thing you see already looks like a
      board game rather than a settings screen. */
   #menu{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
-    background:#3a352a;isolation:isolate}
+    background:#241d13;isolation:isolate}
+  /* Wood table under the menu: the first screen should look like a game being set
+     out, not a form. */
   #menu::before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;
-    background:url('./assets/art/art-paper.png') center/cover;
-    opacity:.5;filter:brightness(.5) saturate(1.1)}
+    background:url('./assets/art/mat-wood.png') center/420px;
+    opacity:.5;filter:brightness(.42) saturate(.85)}
   #menu::after{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;
     background:radial-gradient(ellipse 70% 62% at 50% 42%,
       transparent 38%, rgba(20,16,10,.55) 100%)}
   #menu.hide{display:none}
-  .menuCard{width:min(940px,94vw);max-height:92vh;overflow-y:auto;padding:26px 38px}
+  /* The card is a sheet of paper laid on the table, not the table itself. */
+  .menuCard{position:relative;isolation:isolate;width:min(940px,94vw);max-height:92vh;
+    overflow-y:auto;padding:30px 40px;border-radius:12px;
+    background:#3b3527;border:1px solid rgba(255,238,205,.14);
+    box-shadow:0 22px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,240,210,.07)}
+  .menuCard::before{content:'';position:absolute;inset:0;z-index:-1;border-radius:12px;
+    background:url('./assets/art/art-paper.png') center/cover;
+    opacity:.5;filter:brightness(.56) saturate(1.1)}
   /* Two columns so the setup stops being a tall stack of identical rows. Falls
      back to one column when there is not room for two. */
   .setupGrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
   @media (max-width:760px){.setupGrid{grid-template-columns:1fr;gap:0}}
   .setupCol{min-width:0}
-  .opponentsBox{background:color-mix(in srgb,var(--panel) 55%,transparent);
-    border:1px solid var(--line);border-radius:9px;padding:13px 14px}
+  .opponentsBox{background:rgba(18,14,9,.28);border:1px solid rgba(255,238,205,.1);
+    border-radius:9px;padding:13px 14px;box-shadow:inset 0 2px 6px rgba(0,0,0,.25)}
   .fieldNote{margin:9px 0 0;font-size:11px;color:var(--dim2);line-height:1.45}
   .brand{display:flex;align-items:center;gap:16px;margin-bottom:6px}
   .brand svg{width:46px;height:46px;color:var(--gold);flex:none}
@@ -50,15 +59,31 @@
   .lbl{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);
     margin-bottom:7px;font-weight:600}
   .opts{display:flex;gap:8px;flex-wrap:wrap}
-  .opt{flex:1;min-width:86px;padding:9px 8px;border:1px solid var(--line);border-radius:7px;
-    background:var(--panel2);cursor:pointer;text-align:center;transition:.13s;color:var(--ink);
-    font:inherit}
-  .opt:hover{border-color:var(--line2);background:color-mix(in srgb,var(--panel) 80%,var(--ink) 6%)}
-  .opt.on{border-color:var(--gold);background:color-mix(in srgb,var(--panel) 70%,var(--gold) 14%);box-shadow:inset 0 0 0 1px rgba(224,164,88,.25)}
+  /* Setup options are small tiles you pick, so they get the same card stock as the
+     action cards rather than a cold form-control fill. */
+  .opt{position:relative;isolation:isolate;overflow:hidden;
+    flex:1;min-width:86px;padding:10px 8px;border:1px solid #6b5c3f;border-radius:8px;
+    background:#3a2f22;cursor:pointer;text-align:center;color:var(--ink);font:inherit;
+    transition:transform .12s,box-shadow .12s,border-color .12s;
+    box-shadow:0 2px 0 rgba(20,16,10,.45), inset 0 1px 0 rgba(255,240,210,.06)}
+  .opt::before{content:'';position:absolute;inset:0;z-index:-1;
+    background:url('./assets/art/mat-leather.png') center/150px;
+    opacity:.5;filter:brightness(.62) saturate(.9)}
+  .opt:hover{border-color:var(--gold);transform:translateY(-1px);
+    box-shadow:0 3px 0 rgba(20,16,10,.45), 0 6px 14px rgba(0,0,0,.3)}
+  .opt.on{border-color:var(--gold);
+    box-shadow:0 2px 0 rgba(20,16,10,.45), inset 0 0 0 1px rgba(242,197,111,.4),
+      0 0 16px color-mix(in srgb,var(--gold) 22%,transparent)}
+  .opt.on::before{opacity:.42;filter:brightness(.85) saturate(1) sepia(.25)}
   .opt .k{font-weight:600;font-size:14px}
   .opt .v{font-size:11px;color:var(--dim);margin-top:3px;line-height:1.35}
-  .botRow{padding:9px 11px;border:1px solid var(--line);border-radius:8px;
-    background:var(--panel2);margin-bottom:7px}
+  .botRow{position:relative;isolation:isolate;overflow:hidden;
+    padding:10px 11px;border:1px solid #6b5c3f;border-radius:8px;
+    background:#33291d;margin-bottom:7px;
+    box-shadow:inset 0 1px 0 rgba(255,240,210,.05)}
+  .botRow::before{content:'';position:absolute;inset:0;z-index:-1;
+    background:url('./assets/art/mat-leather.png') center/170px;
+    opacity:.42;filter:brightness(.55) saturate(.85)}
   .botTop{display:flex;align-items:center;gap:9px}
   .botRow .dot{width:11px;height:11px;border-radius:50%;flex:none}
   .botRow select{flex:1;background:var(--panel2);color:var(--ink);border:1px solid var(--line);
@@ -291,16 +316,22 @@
   /* The sidebar carried a flat dark fill next to a warm textured board, which is
      why the UI still read cold even after the board was fixed. Same paper, held
      further back so it never competes with the text over it. */
-  aside{position:relative;isolation:isolate;width:352px;background:#333026;
-    border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
+  aside{position:relative;isolation:isolate;width:352px;background:#2b2318;
+    border-left:1px solid rgba(255,235,195,.12);
+    display:flex;flex-direction:column;overflow:hidden;
+    box-shadow:inset 1px 0 0 rgba(255,235,195,.05)}
   aside::before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;
-    background:url('./assets/art/art-paper.png') center/cover;
-    opacity:.42;filter:brightness(.44) saturate(1.05)}
+    background:url('./assets/art/mat-wood.png') center/300px;
+    opacity:.44;filter:brightness(.4) saturate(.85)}
   /* The bar is part of the same surface. */
-  #bar{position:relative;isolation:isolate;background:#333026}
+  /* The bar is the wooden edge of the table the cards rest on. */
+  #bar{position:relative;isolation:isolate;background:#2b2318}
   #bar::before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;
-    background:url('./assets/art/art-paper.png') center/cover;
-    opacity:.38;filter:brightness(.42) saturate(1.05)}
+    background:url('./assets/art/mat-wood.png') center/300px;
+    opacity:.5;filter:brightness(.42) saturate(.85)}
+  /* A lit top edge, the way a raised wooden rail catches light. */
+  #bar{border-top:1px solid rgba(255,235,195,.14);
+    box-shadow:0 -6px 20px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,235,195,.06)}
   header{padding:12px 15px;border-bottom:1px solid var(--line);display:flex;
     align-items:center;gap:10px}
   header svg{width:22px;height:22px;color:var(--gold);flex:none}
@@ -360,21 +391,49 @@
   .pl .st b i{font-style:normal;font-size:8.5px;letter-spacing:.07em;color:var(--dim2);
     text-transform:uppercase;font-weight:500;margin-top:2px}
   .slots{display:flex;gap:8px;margin-bottom:9px}
-  .slot{flex:1;height:56px;border:1px dashed var(--line2);border-radius:7px;
+  /* Slots are wells the cards drop into: recessed rather than raised, so an empty
+     slot reads as a space waiting to be filled instead of another button. */
+  .slot{flex:1;height:56px;border:1px dashed rgba(255,238,205,.22);border-radius:8px;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-    cursor:pointer;background:var(--panel2);transition:.13s}
-  .slot.on{border-style:solid;border-color:var(--gold);background:color-mix(in srgb,var(--panel) 70%,var(--gold) 12%)}
-  .slot.filled{border-style:solid;border-color:var(--line2)}
+    cursor:pointer;background:rgba(18,14,9,.34);transition:.13s;
+    box-shadow:inset 0 2px 5px rgba(0,0,0,.35)}
+  .slot:hover{border-color:rgba(255,238,205,.4)}
+  .slot.on{border-style:solid;border-color:var(--gold);
+    background:color-mix(in srgb,rgba(18,14,9,.3) 70%,var(--gold) 12%);
+    box-shadow:inset 0 2px 5px rgba(0,0,0,.3), 0 0 0 2px color-mix(in srgb,var(--gold) 30%,transparent)}
+  /* A filled slot holds a card, so it stops looking recessed. */
+  .slot.filled{border-style:solid;border-color:#6b5c3f;background:#3a3427;
+    box-shadow:0 2px 0 rgba(20,16,10,.45), inset 0 1px 0 rgba(255,240,210,.06)}
   .slot svg{width:19px;height:19px;color:var(--gold)}
   .slot img.art{width:26px;height:26px;object-fit:contain}
   .slot .n{font-size:9px;color:var(--dim2);letter-spacing:.12em}
   .slot .a{font-weight:600;font-size:12px;text-transform:capitalize}
   .slot .g{font-size:9px;color:var(--dim2);text-transform:lowercase;margin-top:-1px}
   .acts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-  .act{display:flex;gap:8px;align-items:flex-start;padding:9px;border-radius:6px;
-    border:1px solid var(--line);background:var(--panel2);color:var(--ink);font:inherit;
-    cursor:pointer;text-align:left;transition:.13s}
-  .act:hover:not(:disabled){background:color-mix(in srgb,var(--panel) 75%,var(--ink) 8%);border-color:var(--line2)}
+  /* Action cards, not form buttons. These are the pieces you pick up every round,
+     so they get card stock: warm paper, a printed edge, and a lift on hover. Flat
+     rounded rectangles read as a settings dialog no matter what art is on them. */
+  .act{position:relative;isolation:isolate;overflow:hidden;
+    display:flex;gap:9px;align-items:flex-start;padding:10px 11px;border-radius:8px;
+    border:1px solid #6b5c3f;background:#3a3427;color:var(--ink);font:inherit;
+    cursor:pointer;text-align:left;transition:transform .13s,box-shadow .13s,border-color .13s;
+    box-shadow:0 2px 0 rgba(20,16,10,.5), 0 4px 10px rgba(0,0,0,.28),
+      inset 0 1px 0 rgba(255,240,210,.07)}
+  /* Paper grain on every card. */
+  /* Leather, not paper. Cards you handle every round should feel like a different
+     material from the map they sit under — one texture everywhere is most of why
+     the UI still read flat after the board was fixed. */
+  .act::before{content:'';position:absolute;inset:0;z-index:-1;
+    background:#3a2f22 url('./assets/art/mat-leather.png') center/180px;
+    opacity:.62;filter:brightness(.6) saturate(.9)}
+  /* A hairline inner rule, the way a printed card has a border inside its edge. */
+  .act::after{content:'';position:absolute;inset:3px;border-radius:5px;
+    border:1px solid rgba(255,238,205,.055);pointer-events:none}
+  .act:hover:not(:disabled){transform:translateY(-2px);border-color:var(--gold);
+    box-shadow:0 4px 0 rgba(20,16,10,.5), 0 9px 20px rgba(0,0,0,.34),
+      inset 0 1px 0 rgba(255,240,210,.1)}
+  .act:active:not(:disabled){transform:translateY(0);
+    box-shadow:0 1px 0 rgba(20,16,10,.5), 0 2px 6px rgba(0,0,0,.3)}
   .act:disabled{opacity:.35;cursor:not-allowed}
   /* Dimmed rather than merely disabled: during a guided step the one action being
      taught should be the only thing that looks alive. */
@@ -702,6 +761,10 @@
       <button class="btnBig" id="btnTutorial">
         <span class="bt">Guided first game</span>
         <span class="bs">walks you through one round</span>
+      </button>
+      <button class="btnGhost" id="btnWatch">
+        <span class="bt">Watch a game</span>
+        <span class="bs">it plays itself and explains as it goes</span>
       </button>
       <button class="btnGhost" id="btnPlay">
         <span class="bt">Play</span>

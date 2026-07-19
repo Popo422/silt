@@ -726,3 +726,57 @@ test.describe('action bar layout', () => {
     await expect(page.locator('#bar #go')).toBeEnabled();
   });
 });
+
+// The UI reused one paper scan for every surface, which is why it still read flat
+// after the board was fixed. Wood for the frame, leather for the cards, parchment
+// for the map — a real table is several materials and the difference between them
+// is most of what makes it look inviting.
+test.describe('material textures', () => {
+  test('every referenced texture loads', async ({ page }) => {
+    // A missing background is invisible: the element just falls back to its solid
+    // colour and nothing errors. Without this the UI could quietly lose its
+    // materials and look exactly like the flat version it replaced.
+    const bad = [];
+    page.on('response', r => {
+      if (/assets\/art\/(mat|art-paper|water)/.test(r.url()) && r.status() >= 400) {
+        bad.push(r.url().split('/').pop());
+      }
+    });
+    await open(page);
+    await page.locator('#btnPlay').click();
+    await page.waitForTimeout(500);
+    expect(bad, `failed texture requests: ${bad.join(', ')}`).toEqual([]);
+  });
+
+  test('the frame and the cards use different materials', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    const bg = (sel, pseudo) => page.evaluate(([s, p]) =>
+      getComputedStyle(document.querySelector(s), p).backgroundImage, [sel, pseudo]);
+
+    const bar = await bg('#bar', '::before');
+    const card = await bg('.act', '::before');
+    expect(bar, 'the bar should carry a texture').toContain('url(');
+    expect(card, 'action cards should carry a texture').toContain('url(');
+    // If these ever collapse to the same image the interface goes flat again.
+    expect(card, 'cards and frame should not share one material').not.toBe(bar);
+  });
+
+  test('action cards lift off the surface rather than sitting flush', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    const shadow = await page.evaluate(() =>
+      getComputedStyle(document.querySelector('.act')).boxShadow);
+    expect(shadow, 'a card with no shadow reads as a form control').not.toBe('none');
+  });
+
+  test('an empty slot is recessed and a filled one is not', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    const inset = () => page.evaluate(() =>
+      getComputedStyle(document.querySelector('#s0')).boxShadow.includes('inset'));
+    expect(await inset(), 'an empty slot should read as a well').toBe(true);
+    await page.locator('[data-act="ship"]').click();
+    await expect(page.locator('#s0')).toHaveClass(/filled/);
+  });
+});

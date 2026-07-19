@@ -17,7 +17,7 @@ import path from 'node:path';
 import { chromium } from '@playwright/test';
 
 const DRY = process.argv.includes('--dry');
-const SETS = ['water', 'land'];
+const SETS = ['water', 'land', 'mat'];
 const OUT = 'assets/art';
 
 const browser = await chromium.launch();
