@@ -942,10 +942,40 @@ describe('module boundaries hold', () => {
       './panzoom.js': 200, './tips.js': 150, './diagrams.js': 260,
       './rulebook.js': 320, './demo.js': 400, './panel.js': 300,
       './speech.js': 150, './narration.js': 300,
+      './frame.js': 120, './svg.js': 60,
     };
     for (const [f, cap] of Object.entries(caps)) {
       const n = read(f).split('\n').length;
       expect(n, `${f} is ${n} lines (cap ${cap}) — time to split it`).toBeLessThanOrEqual(cap);
     }
+  });
+});
+
+// Rules stated in two places drift apart. The rulebook printed "depth 2+" for
+// claimed channels from its own literal while score() hardcoded `>= 2`, so
+// retuning one would have silently made the other lie. These pin the numbers to
+// TUNING as the single source.
+describe('the rulebook cannot drift from the engine', () => {
+  it('scores claimed channels at exactly TUNING.rightsDepthMin', () => {
+    const g = newGame(2, 7);
+    const [k] = Object.keys(g.rights);
+    g.rights[k] = 0;
+
+    g.depth[k] = TUNING.rightsDepthMin;
+    expect(score(g)[0].heldCount, 'at the threshold it scores').toBe(1);
+
+    g.depth[k] = TUNING.rightsDepthMin - 1;
+    expect(score(g)[0].heldCount, 'one below it does not').toBe(0);
+  });
+
+  it('every number the rulebook prints comes from TUNING', () => {
+    const src = readFileSync('./rulebook.js', 'utf8');
+    // Strip the interpolations, then look for bare digits left in the prose.
+    // Structural ones (2 actions, depth 0/1 as concepts) are allowed; a stray
+    // tuned value is what this is hunting.
+    const prose = src.replace(/\$\{[^}]*\}/g, '_');
+    const stray = [...prose.matchAll(/<b>(\d+)<\/b>/g)].map(m => m[1])
+      .filter(n => !['0', '1', '2'].includes(n));
+    expect(stray, `hardcoded values in rulebook prose: ${stray.join(', ')}`).toEqual([]);
   });
 });

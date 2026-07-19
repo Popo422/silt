@@ -156,7 +156,8 @@ export function pages(T) {
             can still reach the sea at depth ${TUNING.liveDepthMin}+.
             A stranded one scores <b>nothing</b>.</dd>
           <dt>${X.toll.name}</dt>
-          <dd><b>${TUNING.rightsVP}</b> per claimed channel still at depth 2+</dd>
+          <dd><b>${TUNING.rightsVP}</b> per claimed channel still at depth
+            ${TUNING.rightsDepthMin}+</dd>
           <dt>${X.coins.name}</dt>
           <dd>1 point per <b>${TUNING.vpPerCoins}</b></dd>
           <dt class="neg">Neglect</dt>

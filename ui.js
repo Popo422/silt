@@ -15,7 +15,7 @@ import { createSpeech } from './speech.js';
 import { drawBoard as paintBoard, el, insetRadius } from './board.js';
 import {
   renderContracts, renderPlayers, renderActions, renderSlots, renderAimHint,
-  renderFinalScore,
+  renderFinalScore, renderActor,
   actionDescriptions, actionTips,
 } from './panel.js';
 
@@ -75,13 +75,24 @@ const SPEED_LABEL = { normal: '1×', fast: '2×', off: 'off' };
 // for why it cannot start on its own.
 const speech = createSpeech();
 
-// Hold time is NOT the effect's full duration. Waiting for every animation to
-// finish made one round take 7.4s — a minute of watching per game. Effects are
-// allowed to overlap: you need only long enough to register that a thing happened
-// before the next actor starts, and the tail plays out underneath. Capped so a
-// long shipping route cannot stall the round.
-const HOLD_MAX = 420;
-const holdFor = (ms) => Math.min(HOLD_MAX, ms * 0.45) * (SPEEDS[speed] ?? 1);
+// Hold time is NOT the effect's full duration — effects are allowed to overlap,
+// and the tail of one plays out under the start of the next. But the previous
+// numbers (0.45x, capped at 420ms) overlapped them almost to nothing: a dredge
+// animates for 950ms and got 420 of it, the silt sweep animates for 1400ms and
+// got 420. With three players resolving in turn, every effect was cut off before
+// it read and the round looked like flicker.
+//
+// That was an overcorrection. Waiting for every animation to FINISH made a round
+// take 7.4s, which is a minute of watching per game — so this keeps the overlap
+// but gives each effect most of its own time. A round lands around 3.5s: long
+// enough to follow, short enough not to drag.
+//
+// The floor matters as much as the ceiling. A short effect that resolves in
+// 260ms still needs a beat afterwards or two fast actions read as one event.
+const HOLD_MIN = 420;
+const HOLD_MAX = 900;
+const holdFor = (ms) =>
+  Math.min(HOLD_MAX, Math.max(HOLD_MIN, ms * 0.8)) * (SPEEDS[speed] ?? 1);
 const wait = (ms) => (ms > 0 ? new Promise(r => { setTimeout(r, ms); }) : Promise.resolve());
 
 
@@ -642,7 +653,7 @@ async function step() {
       }
       // Show whose turn it is before the effect fires, otherwise a fast reader
       // sees a boat move with no idea who sent it.
-      await flush({ actor: pi });
+      await flush({ actor: pi, action });
     }
   } finally {
     // The guard at the top of this function is a synchronous check-then-set with
@@ -678,7 +689,7 @@ async function resolveHuman(choice) {
   const a = pendingAction;
   pendingAction = null;
   execute(g, HUMAN, a, choice, queue.claimed);
-  await flush({ actor: HUMAN });
+  await flush({ actor: HUMAN, action: a });
   step();
 }
 
@@ -703,7 +714,7 @@ function pickShip(from) {
 // Drain the log AND the event stream. The log is the transcript; the events are
 // what you actually watch. Repaint first so the board underneath is correct, then
 // animate on top of it and hold long enough for the effect to be read.
-async function flush({ actor = null } = {}) {
+async function flush({ actor = null, action = null } = {}) {
   const me = g.players[HUMAN].name;
   for (const l of g.log) say(l, l.startsWith(me) ? 'me' : '');
   g.log = [];
@@ -718,7 +729,7 @@ async function flush({ actor = null } = {}) {
   if (!events.length) return;
   if (speed === 'off') return reactToEvents(events);
 
-  if (actor !== null) setActor(actor);
+  if (actor !== null) setActor(actor, action);
   let longest = 0;
   for (const ev of events) longest = Math.max(longest, fx.play(ev));
   await wait(holdFor(longest));
@@ -761,16 +772,14 @@ function applySpeed() {
   if (b) { b.textContent = SPEED_LABEL[speed]; b.classList.toggle('muted', speed === 'off'); }
 }
 
-// Name the player currently acting, above the board. Four bots resolving in
-// sequence is unreadable otherwise — you see effects with no author.
-function setActor(pi) {
-  const b = $('actor');
-  if (!b) return;
-  if (pi === null) { b.classList.remove('on'); return; }
-  const p = g.players[pi];
-  b.textContent = pi === HUMAN ? 'You' : p.name;
-  b.style.color = PC[pi];
-  b.classList.add('on');
+// Hoisted, not a const arrow: flush() and resetGame() both call this from above
+// its own position in the file, which a const would make a temporal-dead-zone
+// crash rather than a working forward reference.
+function setActor(pi, action = null) {
+  renderActor({
+    el: $, pi, action, T, colors: PC,
+    who: pi === null ? null : (pi === HUMAN ? 'You' : g.players[pi].name),
+  });
 }
 
 async function endRound() {

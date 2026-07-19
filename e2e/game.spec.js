@@ -510,3 +510,27 @@ test.describe('you can find your own pieces', () => {
     expect(parseFloat(stroke)).toBeGreaterThan(0);
   });
 });
+
+// You could see an effect fire and an animation play, but the badge above the
+// board named only WHO was acting — never what they did. The only place to
+// learn the move was the log, which you had to catch as it scrolled.
+test('the actor badge names the action, not just the player', async ({ page }) => {
+  await page.goto('/index.html');
+  await page.evaluate(() => window.SILT.ready);
+  await page.evaluate(() => window.SILT.setTheme('silt'));
+  await page.evaluate(() => window.SILT.boot(3));
+  const seen = await page.evaluate(async () => {
+    const out = [];
+    const el = document.getElementById('actor');
+    new MutationObserver(() => {
+      if (el.classList.contains('on') && el.textContent) out.push(el.textContent);
+    }).observe(el, { childList: true, characterData: true, subtree: true, attributes: true });
+    window.SILT.program('survey', 'survey');
+    window.SILT.commit();
+    await new Promise(r => { setTimeout(r, 6000); });
+    return [...new Set(out)];
+  });
+  expect(seen.length, 'the badge should appear during resolution').toBeGreaterThan(0);
+  // "Name — Action", not a bare name.
+  expect(seen.every(s => s.includes('—')), `got: ${seen.join(' | ')}`).toBe(true);
+});

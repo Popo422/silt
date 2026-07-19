@@ -231,8 +231,9 @@ export function renderFinalScore({ el, rows, players, T, tuning, esc }) {
       'Settlements that can still reach the sea at the end. A settlement cut off '
       + 'by dead water scores nothing.'],
     [T.terms.toll.name, 'Channels you own',
-      `${tuning.rightsVP} points for each channel you dredged that is still deep `
-      + 'at the end.'],
+      `${tuning.rightsVP} points for each channel you dredged that is still at `
+      + `depth ${tuning.rightsDepthMin} or more at the end. Let one silt below `
+      + 'that and it scores you nothing.'],
     [T.terms.coins.name, 'Leftover gold', 'Unspent gold, converted at the end.'],
     [T.terms.silted.name, 'Dead water penalty',
       `You LOSE ${tuning.siltedPenaltyVP} point for every dead channel touching `
@@ -248,4 +249,20 @@ export function renderFinalScore({ el, rows, players, T, tuning, esc }) {
       <td>${x.network}</td><td>${x.held}</td><td>${x.coin}</td><td>${x.silt}</td>
       <td>${x.total}</td></tr>`).join('')}
   </table>`;
+}
+
+// The badge above the board naming who is acting and what they are doing.
+//
+// Bots resolving in sequence is unreadable without it — you see effects with no
+// author. It used to show the name ALONE, which was half an answer: it said who,
+// never what, so the only place to learn the move was the log, and you had to
+// catch that as it scrolled.
+export function renderActor({ el, pi, action, T, colors, who }) {
+  const b = el('actor');
+  if (!b) return;
+  if (pi === null) { b.classList.remove('on'); return; }
+  const verb = action && T.actions[action] ? T.actions[action].name : '';
+  b.textContent = verb ? `${who} — ${verb}` : who;
+  b.style.color = colors[pi];
+  b.classList.add('on');
 }

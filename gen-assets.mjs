@@ -54,17 +54,28 @@ const NEG = 'photograph, 3d render, glossy, neon, text, letters, words, writing,
 // that makes the other batches look good here — parchment grain, warm palette,
 // painterly edges — is noise when the output is going to be traced into a vector
 // path. What we want is one solid black shape on white with a hard edge.
-const PIECE = (subject) =>
-  `solid black silhouette of ${subject}, `
-  + 'pure black shape on a pure white background, no other colours, '
-  + 'completely filled in, no outline, no line art, no shading, no gradient, '
-  + 'no texture, no detail inside the shape, '
-  + 'symmetrical, centred, fills the frame with a small even margin, '
-  + 'crisp hard edges, high contrast, like a stencil or a logo';
+// A painted player token, one per seat colour.
+//
+// Deliberately NOT the ICON brief: an icon may be an illustration of a thing,
+// but a piece has to look like an OBJECT you could pick up, because that is what
+// it will be in a physical edition. So: a carved wooden token, lit from above,
+// with a flat base — and painted in the seat colour rather than the shared teal
+// and gold, which is the whole point of having four of them.
+//
+// Bold and simple is a hard requirement, not a style note. This renders at about
+// 41px on the board, where anything finer than a thick shape turns to mush.
+const TOKEN = (colourName) =>
+  `a carved wooden board game piece shaped like a small stilt house with a wide `
+  + `peaked roof, painted in ${colourName}, `
+  + `bold simple chunky form, thick heavy shapes, no thin parts, no fine detail, `
+  + `strong readable silhouette, symmetrical, seen straight from the front, `
+  + `flat base, soft light from above, matte painted wood, `
+  + `centred and filling the frame, plain white background, no shadow on the `
+  + `ground, no scene, no text, hand-painted board game art`;
 
-const PIECE_NEG = 'colour, color, grey, gray, gradient, shading, shadow, texture, '
-  + 'grain, outline, line art, sketch, photograph, 3d, perspective, background '
-  + 'scenery, multiple objects, text, watermark, frame, border';
+const TOKEN_NEG = 'photograph, 3d render, glossy, reflective, text, letters, '
+  + 'watermark, signature, frame, border, drop shadow, scene, landscape, '
+  + 'multiple objects, tiny details, thin lines, windows, holes';
 
 // A tight icon brief.
 //
@@ -141,22 +152,53 @@ const BATCHES = {
   //
   // This is a game meant to port to a physical edition, so the shape should look
   // like a piece you could hold, not an icon.
+  // Player pieces, one painted token per seat colour.
+  //
+  // Tried as a traced SVG first, so that one asset could take any colour at
+  // runtime. It failed on the thing that matters: FLUX draws a stilt house with
+  // windows and gaps between the legs, and traced into a path those holes turn
+  // to speckle. Rendered at the ~37px the board actually uses, the piece read as
+  // a smudge with a face. Four painted files cost a regeneration if the palette
+  // moves, which is a far smaller problem than an unreadable piece.
+  //
+  // Colours match --p0..--p3 in index.html; keep them in step.
   pieces: {
     size: [768, 768],
-    neg: PIECE_NEG,
+    neg: TOKEN_NEG,
     prompts: {
-      'piece-meeple': PIECE('a standing human figure game token, rounded head, '
-        + 'simple body, the classic wooden board game meeple silhouette'),
-      'piece-hut':    PIECE('a small stilt house with a peaked roof, seen from the '
-        + 'front, a wooden board game building token'),
-      'piece-boat':   PIECE('a small outrigger canoe with a single curved sail, '
-        + 'seen from the side, a wooden board game token'),
-      'piece-tower':  PIECE('a squat round watchtower with a flag on top, seen from '
-        + 'the front, a wooden board game token'),
-      'piece-post':   PIECE('a trading post: a peaked roof on four posts with a '
-        + 'banner, seen from the front, a wooden board game token'),
-      'piece-prow':   PIECE('a carved boat prow ornament curving upward, '
-        + 'Southeast Asian style, a wooden board game token'),
+      'piece-p0': TOKEN('warm amber gold'),
+      'piece-p1': TOKEN('pale cyan blue'),
+      'piece-p2': TOKEN('soft leaf green'),
+      'piece-p3': TOKEN('warm coral pink'),
+    },
+  },
+
+  // The three bays are the goal of the entire game and the biggest icon on the
+  // board at ~49px — comfortably above the size where painted art beats a glyph.
+  // Currently a generic lighthouse from the sprite sheet.
+  //
+  // The menu logo and backdrop are here too because they are the first thing
+  // anyone sees, and the backdrop is the one surface with real room for artwork
+  // rather than a 40px token.
+  scene: {
+    size: [768, 768],
+    prompts: {
+      'mouth-bay': ICON('a river mouth opening into the open sea, a simple stone '
+        + 'lighthouse on a headland with calm water around it'),
+      'logo-delta': ICON('a river delta seen from above, one channel splitting '
+        + 'into three that reach the sea, bold simple shapes'),
+    },
+  },
+
+  menu: {
+    size: [1024, 768],
+    prompts: {
+      'menu-delta': 'wide painted landscape of a tropical river delta at golden '
+        + 'hour seen from a high vantage point, calm braided channels reaching '
+        + 'toward the sea, stilt houses on the banks, distant mountains, '
+        + `muted and atmospheric, low contrast, nothing in sharp focus, `
+        + `painted backdrop meant to sit BEHIND text, no people, no boats in the `
+        + `foreground, no text, ${STYLE}`,
     },
   },
 

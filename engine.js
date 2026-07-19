@@ -29,7 +29,11 @@ export const TUNING = {
   // tension, just 1.7 more dead channels and -2.6 score.
   tollPerShip: 2,           // coins paid to a channel's rights-holder when others ship through
   rightsEnabled: true,      // dredging claims a channel; others pay you to use it
-  rightsVP: 2,              // VP per channel you still hold at depth>=2 at game end
+  rightsVP: 2,              // VP per channel you still hold at game end
+  // Minimum depth for a claimed channel to score. Was hardcoded as `>= 2` down
+  // in score(), while the rulebook printed "depth 2+" from its own literal — two
+  // copies of one rule, either of which could be changed without the other.
+  rightsDepthMin: 2,
   contractScale: 2,         // contracts sat at ~22% of score; target is ~45%
   handLimit: 4,
   vpPerCoins: 5,
@@ -513,7 +517,8 @@ export function score(g) {
     const silt = -dead.size * TUNING.siltedPenaltyVP;
     // Rights only score if you kept the channel navigable — abandoned tolls are worth nothing.
     const heldCount = TUNING.rightsEnabled
-      ? Object.keys(g.rights).filter(k => g.rights[k] === p.idx && g.depth[k] >= 2).length : 0;
+      ? Object.keys(g.rights).filter(k =>
+        g.rights[k] === p.idx && g.depth[k] >= TUNING.rightsDepthMin).length : 0;
     const held = heldCount * TUNING.rightsVP;
     return { name: p.name, contracts, mouth, network, coin, silt, held, heldCount,
              live, stations: p.stations.length,

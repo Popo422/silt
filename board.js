@@ -9,21 +9,10 @@
 import { NODES, MOUTHS, CHANNELS, chKey, NODE_BY_ID } from './graph.js';
 import { buildTargets, shipOptions, TUNING } from './engine.js';
 import { nodeName } from './theme.js';
+import { drawFrame } from './frame.js';
+import { el, use } from './svg.js';
 
-const NS = 'http://www.w3.org/2000/svg';
-
-export function el(t, a = {}) {
-  const e = document.createElementNS(NS, t);
-  for (const k in a) e.setAttribute(k, a[k]);
-  return e;
-}
-
-export function use(href, x, y, size, color, cls = '') {
-  const u = el('use', { href, x: x - size / 2, y: y - size / 2, width: size, height: size });
-  u.style.color = color;
-  if (cls) u.setAttribute('class', cls);
-  return u;
-}
+export { el, use } from './svg.js';
 
 export const depthColor = (d) =>
   d === 0 ? 'var(--dead)' : ['', 'var(--water1)', 'var(--water2)', 'var(--water3)'][d];
@@ -98,6 +87,17 @@ function ensureDefs(svg) {
       preserveAspectRatio: 'xMidYMid slice' }));
     defs.appendChild(pat);
   }
+
+  // An empty node is a printed depression in the board — a space waiting for a
+  // piece — not another filled circle. A radial gradient darkening toward the
+  // rim does the job of an inset shadow at a fraction of the cost of an SVG
+  // filter, which would run on every one of twenty nodes per repaint.
+  const well = el('radialGradient', { id: 'nodeWell', cx: '50%', cy: '42%', r: '62%' });
+  well.appendChild(el('stop', { offset: '0%', 'stop-color': '#3b3426' }));
+  well.appendChild(el('stop', { offset: '72%', 'stop-color': '#332c20' }));
+  well.appendChild(el('stop', { offset: '100%', 'stop-color': '#241e15' }));
+  defs.appendChild(well);
+
   svg.appendChild(defs);
 }
 
@@ -109,6 +109,7 @@ export function drawBoard(ctx) {
           pendingAction, highlight: hl, artImage, ico, nodeLabel, ART } = ctx;
   svg.innerHTML = '';
   ensureDefs(svg);
+  drawFrame(svg, T);
   // Crosshair while aiming so the board reads as "click a target", not "drag me".
   svg.classList.toggle('aiming', !!pendingAction);
   const owner = {};
@@ -313,7 +314,8 @@ export function drawBoard(ctx) {
     // Warm, semi-transparent fills so nodes read as markers resting ON the paper.
     // Opaque dark discs looked like holes punched through it once the board gained
     // a parchment ground.
-    let fill = 'color-mix(in srgb, #4a4130 78%, transparent)';
+    // Unowned: a depression, so the board reads as having spaces you can claim.
+    let fill = 'url(#nodeWell)';
     let stroke = 'var(--line2)', sw = 0.28;
     if (isMouth) { fill = 'color-mix(in srgb, #3c4442 82%, transparent)'; stroke = 'var(--water3)'; }
     if (own !== undefined) {
@@ -355,14 +357,23 @@ export function drawBoard(ctx) {
     } else if (own !== undefined) {
       // Dark plinth: the piece reads as standing ON the node rather than being
       // painted into it, and it holds the silhouette against a busy board.
-      grp.appendChild(el('ellipse', { cx: n.x, cy: n.y + 2.0, rx: 2.5, ry: 0.75,
+      grp.appendChild(el('ellipse', { cx: n.x, cy: n.y + 1.5, rx: 1.7, ry: 0.5,
         fill: 'rgba(20,16,10,.5)' }));
       // Every player's piece is the same object, as it would be on a table.
       // Yours is outlined so you can find yourself at a glance — done with a
       // stroke under the fill (paint-order) rather than a larger copy drawn
       // behind, which the node body simply hid.
-      const piece = use('#ic-piece', n.x, n.y - 0.15, 5.0, PC[own],
+      // Sized to sit INSIDE the node, not to straddle it. At 5.0 against a node
+      // radius of 3.3 the roof overhung the circle entirely and collided with
+      // the place labels and the channels running underneath.
+      const piece = use('#ic-piece', n.x, n.y - 0.1, 3.7, PC[own],
         own === HUMAN ? 'ownPiece' : '');
+      // A few degrees of tilt, seeded off the node id. Perfectly axis-aligned
+      // pieces read as vector art; a piece set down by a hand never lands square.
+      // Deterministic so it does not jitter on every repaint — same trick the
+      // channels use for their meander.
+      const tilt = (hash01(`tilt${n.id}`) - 0.5) * 7;
+      piece.setAttribute('transform', `rotate(${tilt.toFixed(2)} ${n.x} ${n.y})`);
       grp.appendChild(piece);
     }
 
