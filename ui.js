@@ -146,6 +146,7 @@ function buildMenu() {
   $('btnSpeed').addEventListener('click', cycleSpeed);
   wireBook();
   wireBoard();
+  wireTips();
 }
 
 function setTheme(id) {
@@ -618,14 +619,106 @@ function drawBoard() {
 
 // ---------------------------------------------------------------- panel
 
+const esc = (s) => String(s)
+  .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+  .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// ---------------------------------------------------------------- tooltips
+//
+// Delegated hover help. Anything with data-tip gets a panel after a short delay;
+// data-tip-title is an optional heading.
+//
+// Not the native `title` attribute: that waits about a second, cannot be styled,
+// cannot hold a heading, and never appears on touch at all. Delegation means new
+// markup from a re-render is covered automatically — render() replaces these
+// nodes constantly, so per-element listeners would be dead within a frame.
+function wireTips() {
+  const box = document.createElement('div');
+  box.id = 'tip';
+  document.body.appendChild(box);
+  let timer = null, current = null;
+
+  const hide = () => {
+    clearTimeout(timer);
+    current = null;
+    box.classList.remove('on');
+  };
+
+  const show = (el) => {
+    const tip = el.dataset.tip;
+    if (!tip) return;
+    const title = el.dataset.tipTitle;
+    box.innerHTML = (title ? `<b>${esc(title)}</b>` : '') + `<span>${esc(tip)}</span>`;
+    box.classList.add('on');
+
+    // Position after paint so the measured size is real. Prefer left of the
+    // sidebar; flip below if that would run off the top.
+    const r = el.getBoundingClientRect();
+    const b = box.getBoundingClientRect();
+    let x = r.left - b.width - 12;
+    let y = r.top + r.height / 2 - b.height / 2;
+    if (x < 8) x = r.right + 12;                        // no room left: go right
+    if (y < 8) y = 8;
+    if (y + b.height > innerHeight - 8) y = innerHeight - b.height - 8;
+    box.style.left = `${Math.round(x)}px`;
+    box.style.top = `${Math.round(y)}px`;
+  };
+
+  document.addEventListener('pointerover', (e) => {
+    const el = e.target.closest?.('[data-tip]');
+    if (!el || el === current) return;
+    current = el;
+    clearTimeout(timer);
+    // Long enough not to fire while the pointer crosses the panel, short enough
+    // to feel like an answer rather than a wait.
+    timer = setTimeout(() => show(el), 380);
+  });
+  document.addEventListener('pointerout', (e) => {
+    if (e.target.closest?.('[data-tip]') === current) hide();
+  });
+  // A tooltip that survives a click is just in the way.
+  document.addEventListener('pointerdown', hide);
+  document.addEventListener('scroll', hide, true);
+}
+
+// Plain-English one-liners. These used to be notation — "+1 lalim · 1g · singil",
+// "≤2 → Look" — which reads as an API signature, not a game. A new player cannot
+// decode that, and it was the first thing they saw on every button.
+//
+// Numbers still come from TUNING so the copy cannot drift from the rules.
 function actDesc() {
   const p = g.players[HUMAN];
-  const c = T.terms.coins.name === 'ginto' ? 'g' : 'c';
+  const coin = (n) => `${n} ${n === 1 ? 'gold' : 'gold'}`;
   return {
-    dredge: `+${TUNING.dredgeAmount} ${T.terms.depth.name} · ${TUNING.dredgeCoins}${c} · ${T.terms.toll.name}`,
-    build: `${T.terms.station.name} · ${buildCost(p)}${c}`,
-    ship: `≤${TUNING.shipCubesMax} → ${T.terms.mouth.name}`,
-    survey: `+${TUNING.surveyCoins}${c} · ${TUNING.surveyDraw}→1`,
+    dredge: `Deepen a channel by ${TUNING.dredgeAmount}. Costs ${coin(TUNING.dredgeCoins)}, `
+          + `then others pay you to pass.`,
+    build:  `Found a new settlement. Costs ${coin(buildCost(p))}.`,
+    ship:   `Carry up to ${TUNING.shipCubesMax} goods downstream to the sea.`,
+    survey: `Take ${coin(TUNING.surveyCoins)} and draw ${TUNING.surveyDraw} contracts, keep 1.`,
+  };
+}
+
+// The longer "why would I do this" explanation, shown on hover. The one-liner says
+// what an action does; this says when it is the right call and what it costs you —
+// the part a rulebook would cover and a button cannot.
+function actTip() {
+  const p = g.players[HUMAN];
+  return {
+    dredge: `Repairs one channel and claims it. While it stays deep, every other `
+          + `player pays you ${TUNING.tollPerShip} gold each time they ship through, `
+          + `and you score ${TUNING.rightsVP} points for it at the end. `
+          + `Dredging is how you turn other people's traffic into income.`,
+    build:  `Places a settlement on a node you can reach, bringing its goods online. `
+          + `Costs ${buildCost(p)} gold now and rises with each one you own. `
+          + `Beyond ${TUNING.freeStations} settlements you pay ${TUNING.upkeepPerStation} `
+          + `gold upkeep per extra one every round, and you abandon them if you cannot pay.`,
+    ship:   `Moves up to ${TUNING.shipCubesMax} goods from one of your settlements to `
+          + `the sea, paying ${TUNING.shipPerCube} gold per good plus `
+          + `${TUNING.shipPerChannel} per channel crossed. This is how contracts get `
+          + `filled — and every channel you use silts up by ${TUNING.siltPerShip}.`,
+    survey: `Draws ${TUNING.surveyDraw} contracts and keeps the best one, plus `
+          + `${TUNING.surveyCoins} gold. Contracts are most of your score, so a hand `
+          + `with nothing in it is usually worth fixing before anything else.`,
   };
 }
 
@@ -636,16 +729,40 @@ function render() {
     ? (T.id === 'anod' ? 'Pumili' : 'Choose a target')
     : (T.id === 'anod' ? 'Magplano' : 'Program');
 
+  // Tell the player what the panel wants from them right now. Without this the
+  // program panel looks identical whether it needs two actions, one, or a click
+  // on the board — you had to infer the state from which controls were disabled.
+  const filled = program.filter(Boolean).length;
+  $('progHint').textContent = pendingAction
+    ? (T.id === 'anod' ? 'pumili sa mapa' : 'click the board')
+    : filled === 0 ? (T.id === 'anod' ? 'pumili ng dalawa' : 'pick two')
+    : filled === 1 ? (T.id === 'anod' ? 'isa pa' : 'one more')
+    : (T.id === 'anod' ? 'handa na' : 'ready');
+
+  // "8g · 1b · 0✓" was unreadable without a key. Same numbers, but each is
+  // labelled and carries a tooltip naming what it counts.
   $('pls').innerHTML = g.players.map((p, i) => `
     <div class="pl ${i === HUMAN ? 'me' : ''}">
       <span class="dot" style="background:${PC[i]}"></span>
       <span class="nm">${p.name}</span>
-      <span class="st">${p.coins}${T.terms.coins.name === 'ginto' ? 'g' : 'c'} · ${p.stations.length}${T.id === 'anod' ? 'b' : 'st'} · ${p.done.length}✓</span>
+      <span class="st">
+        <b data-tip="${esc(`Gold. Spent on dredging, founding settlements and paying tolls.`)}"
+           data-tip-title="Gold">${p.coins}<i>gold</i></b>
+        <b data-tip="${esc(`Settlements held. Each works its node; beyond ${TUNING.freeStations} you pay upkeep every round.`)}"
+           data-tip-title="${esc(T.terms.station.name)}">${p.stations.length}<i>${
+             T.id === 'anod' ? 'balangay' : 'sites'}</i></b>
+        <b data-tip="${esc('Contracts fulfilled. These are most of the final score.')}"
+           data-tip-title="Contracts done">${p.done.length}<i>done</i></b>
+      </span>
     </div>`).join('');
 
   const d = actDesc();
+  const tips = actTip();
   $('acts').innerHTML = ['dredge', 'build', 'ship', 'survey'].map(a => `
-    <button class="act" data-act="${a}" ${pendingAction ? 'disabled' : ''}>
+    <button class="act" data-act="${a}" ${pendingAction ? 'disabled' : ''}
+            data-tip="${esc(tips[a])}"
+            data-tip-title="${esc(T.actions[a].name)}${
+              T.actions[a].gloss ? ` — ${esc(T.actions[a].gloss)}` : ''}">
       ${icon(ico(a))}
       <span class="txt"><span class="t">${T.actions[a].name}${
         T.actions[a].gloss ? `<em>${T.actions[a].gloss}</em>` : ''}</span>
@@ -672,14 +789,31 @@ function render() {
   });
 
   const p = g.players[HUMAN];
-  const anyMouth = T.id === 'anod' ? 'kahit saáng look' : 'any mouth';
+  // English inside an English sentence. "to kahit saáng look" mixed the two mid
+  // clause and parsed as neither; themed vocabulary belongs on labels and proper
+  // nouns, not spliced into running prose.
+  const anyMouth = 'any bay';
+  // Hand size against the limit: you can hold a bounded number, and hitting the
+  // cap silently discards a Survey draw.
+  $('ctCount').textContent = p.contracts.length
+    ? `${p.contracts.length}/${TUNING.handLimit}` : '';
+  // Written as a sentence. "30  4 kalakal · 3 urìs → Kanluran" packed four facts
+  // into notation with no verb — you had to already know the game to parse it.
   $('cts').innerHTML = p.contracts.length
-    ? p.contracts.map(c => `<div class="ct">
-        <span class="vp">${Math.round(c.vp * TUNING.contractScale)}</span>
-        <span>${c.need} ${T.id === 'anod' ? 'kalakal' : 'cubes'} · ${c.types} ${T.id === 'anod' ? 'urì' : 'type'}${c.types > 1 ? 's' : ''}
-        → ${c.mouth ? nodeLabel(T, c.mouth) : anyMouth}</span>
-      </div>`).join('')
-    : `<div class="ct">${T.id === 'anod' ? `walâ — subukan ang ${T.actions.survey.name}` : 'none — try Survey'}</div>`;
+    ? p.contracts.map(c => {
+        const pts = Math.round(c.vp * TUNING.contractScale);
+        const where = c.mouth ? nodeLabel(T, c.mouth) : anyMouth;
+        const kinds = c.types > 1 ? `${c.types} different kinds` : 'any one kind';
+        return `<div class="ct" data-tip-title="Contract — ${pts} points"
+             data-tip="${esc(`Deliver ${c.need} goods of ${kinds} to ${where}. `
+               + `Goods count once they reach the sea; you keep the points even if `
+               + `the route silts up afterwards.`)}">
+          <span class="vp">${pts}</span>
+          <span class="cbody">Deliver <b>${c.need}</b> goods, <b>${kinds}</b>,
+            to <b>${where}</b></span>
+        </div>`;
+      }).join('')
+    : `<div class="ct empty">No contracts yet — use ${T.actions.survey.name} to draw some.</div>`;
 
   $('go').disabled = !(program[0] && program[1]) || !!pendingAction;
 
