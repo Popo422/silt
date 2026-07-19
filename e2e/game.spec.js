@@ -1,11 +1,15 @@
 import { test, expect } from '@playwright/test';
 
-const boot = async (page, seed = 20260719) => {
+// These specs assume a 4-player table; the menu default is 3.
+const boot = async (page, seed = 20260719, players = 4) => {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto('/index.html');
-  await page.waitForFunction(() => !!window.SILT);
+  await page.waitForFunction(() => window.SILT?.isReady === true);
+  await page.evaluate(n => window.SILT.setConfig({
+    players: n, bots: ['balanced', 'expander', 'steward'].slice(0, n - 1),
+  }), players);
   await page.evaluate(s => window.SILT.boot(s), seed);
   return errors;
 };

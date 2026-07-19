@@ -12,10 +12,12 @@ No hidden information. No take-that cards. You lose because you misread the boar
 
 ```bash
 npm install
-npm run play      # opens the prototype at localhost:5178
+npm run play      # opens at localhost:5178
 ```
 
-You are the gold player against three bots. Program two actions per round, commit, watch it resolve.
+Pick your table from the menu — 2–4 players, each opponent set to one of six AI
+archetypes, and a 5/8/11-round length. **Guided first game** walks you through the
+rules step by step, waiting on real actions rather than just showing text.
 
 ---
 
@@ -63,8 +65,11 @@ Stations score **nothing** on their own. Only working routes count.
 | `engine.js` | Pure rules engine. All tuning constants live in `TUNING` |
 | `ai.js` | Five bot archetypes used to stress the balance |
 | `index.html` / `ui.js` | Browser prototype (SVG, no build step) |
-| `engine.test.js` | 72 unit tests |
-| `e2e/game.spec.js` | 27 Playwright tests |
+| `tutorial.js` | Guided-first-game script, gated on real game state |
+| `assets/` | Icon sprite sheet + credits (`build-sprites.mjs` regenerates) |
+| `engine.test.js` | 93 unit tests |
+| `e2e/game.spec.js` | Rules and board Playwright tests |
+| `e2e/ui.spec.js` | Menu, tutorial, assets, responsiveness |
 | `sim.mjs` | Headless balance simulator |
 | `analyze.mjs` | Topology analysis — chokepoints, route counts |
 
@@ -88,14 +93,41 @@ The bot archetypes exist to answer specific balance questions:
 
 Current results (400 games each, competent fields): heads-up is 51/49, the 4-way mirror sits at 26%, and `defector` collapses to 0.8–6% — freeloading loses. `expander` only dominates when its opponents are deliberately crippled bots.
 
+### Balance
+
+Measured over 400 games per field, both seat orders:
+
+| Field | Win rates | Avg score |
+|---|---|---|
+| 2p | 47 / 53 | 45–47 |
+| 3p | 32 / 32 / 39 | 42–46 |
+| 4p mixed | ~25 each | ~40 |
+
+Contracts are 37–46% of a winning score, ~9 of 31 channels silt per game, and
+about 55% of stations still reach the sea at the end.
+
+**Dredging Rights** is what made maintenance a real strategy: dredging claims the
+channel, others pay a toll to ship through it, and channels you still hold at
+depth 2+ score at game end. Without it every archetype converged on the same line.
+
+Rejected after measurement, kept as `TUNING` flags so the results are reproducible:
+
+- `siltDownstream` — severs the delta; 0% of stations end up live
+- `siltPerShip: 2` — hits the silt target but collapses scores to 17
+- snake resolution order — no measurable effect on seat balance
+
 ### Known open issues
 
-- **Scores land at ~25–33, below the 45–60 target.** The VP economy is still undertuned.
-- **Only 2–7 of 31 channels silt per game.** The delta doesn't degrade as dramatically as the design intends — this is the central premise and it's currently too gentle.
-- The `balanced` bot gates building behind `coins >= cost + 2`, which makes it too passive in some fields and skews 3p results.
+- `turtle` still wins ~45% in the all-comers field; it is the strongest single line.
+- Scores land at 40–47 against an original 45–60 target — close, not centred.
 
 ### Tuning
 
 Everything is in `TUNING` at the top of `engine.js`. Change a value, run `npm run sim`, read the win rates. The simulator is the point — it turns "I think dredging is too strong" into a number in about four seconds.
 
 ![SILT prototype](screenshot.png)
+
+## Credits
+
+Icons from [game-icons.net](https://game-icons.net) by Lorc and Delapouite, CC BY 3.0.
+See [assets/CREDITS.md](assets/CREDITS.md).
