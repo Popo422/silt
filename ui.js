@@ -27,6 +27,7 @@ const book = createRulebook();
 const fx = createFX(document.getElementById('fx'), {
   colors: PC,
   nodeAt: (id) => NODE_BY_ID[id],
+  radiusOf: (id) => (MOUTHS.includes(id) ? 4.2 : 3.3) - 0.35,
 });
 
 // Animation speed. Playing a round used to be one synchronous blast: every bot
@@ -56,8 +57,38 @@ async function loadSprites() {
 }
 
 const icon = (name, cls = '') =>
-  `<svg class="${cls}"><use href="#ic-${name}"/></svg>`;
+  ART[name]
+    ? `<img class="art ${cls}" src="${ART[name]}" alt="" draggable="false">`
+    : `<svg class="${cls}"><use href="#ic-${name}"/></svg>`;
 const ico = (slot) => T.icons[slot];
+
+// Painted art, keyed by the same names the SVG sprite sheet uses.
+//
+// Only covers pieces where a painted sprite beats a flat glyph. Board markers and
+// coins are deliberately absent: they render around 40px and below, where painted
+// detail collapses into a coloured blob and a crisp SVG shape wins. Anything not
+// listed here falls through to the sprite sheet, so this table can grow one entry
+// at a time without touching a call site.
+const ART = {
+  bangka:  './assets/art/art-ship-cut.png',
+  hukay:   './assets/art/art-dredge-cut.png',
+  tayo:    './assets/art/art-build-cut.png',
+  tanaw:   './assets/art/art-survey-cut.png',
+  ship:    './assets/art/art-ship-cut.png',
+  dredge:  './assets/art/art-dredge-cut.png',
+  build:   './assets/art/art-build-cut.png',
+  survey:  './assets/art/art-survey-cut.png',
+  kawayan: './assets/art/art-timber-cut.png',
+  timber:  './assets/art/art-timber-cut.png',
+  grain:   './assets/art/art-grain-cut.png',
+  salt:    './assets/art/art-salt-cut.png',
+};
+
+// SVG <image> for board use. Same signature as use() so the two are swappable.
+const artImage = (name, x, y, size) => el('image', {
+  href: ART[name], x: x - size / 2, y: y - size / 2,
+  width: size, height: size, preserveAspectRatio: 'xMidYMid meet',
+});
 
 // ---------------------------------------------------------------- menu
 
@@ -287,9 +318,26 @@ function drawBoard() {
   // beneath the node circles, which paint later and swallowed the clicks — dredge
   // became unresolvable and the round hung.
   const hitLayer = [];
+
+  // Stop a channel at the edge of each node instead of running to its centre.
+  // Centre-to-centre was invisible while node fills were opaque; once they went
+  // semi-transparent over the parchment, every node had a visible X drawn through
+  // it. Channels are water BETWEEN settlements — they should not cross them.
+  const inset = (P, Q, rP, rQ) => {
+    const dx = Q.x - P.x, dy = Q.y - P.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    return [
+      { x: P.x + ux * rP, y: P.y + uy * rP },
+      { x: Q.x - ux * rQ, y: Q.y - uy * rQ },
+    ];
+  };
+  const radiusOf = (id) => (MOUTHS.includes(id) ? 4.2 : 3.3) - 0.35;   // tuck under the ring
+
   for (const [a, b] of CHANNELS) {
     const k = chKey(a, b), d = g.depth[k];
-    const A = NODE_BY_ID[a], B = NODE_BY_ID[b];
+    const A0 = NODE_BY_ID[a], B0 = NODE_BY_ID[b];
+    const [A, B] = inset(A0, B0, radiusOf(a), radiusOf(b));
     const dredgeable = pendingAction === 'dredge' && d > 0 && d < TUNING.maxDepth;
 
     svg.appendChild(el('line', {
@@ -318,7 +366,9 @@ function drawBoard() {
     for (const o of shipOptions(g, g.players[HUMAN])) {
       for (const k of o.path) {
         const [a, b] = k.split('>');
-        const A = NODE_BY_ID[a], B = NODE_BY_ID[b];
+        // Inset like the channels themselves, or the preview draws its own X
+        // through every node on the route.
+        const [A, B] = inset(NODE_BY_ID[a], NODE_BY_ID[b], radiusOf(a), radiusOf(b));
         svg.appendChild(el('line', { x1: A.x, y1: A.y, x2: B.x, y2: B.y,
           stroke: 'var(--gold)', 'stroke-width': 0.28, opacity: .5,
           'stroke-dasharray': '.7 .8' }));
@@ -346,9 +396,18 @@ function drawBoard() {
         : hl.ids?.includes?.(n.id)));
 
     const r = isMouth ? 4.2 : 3.3;
-    let fill = 'var(--panel2)', stroke = 'var(--line2)', sw = 0.28;
-    if (isMouth) { fill = 'var(--panel)'; stroke = 'var(--water3)'; }
-    if (own !== undefined) { stroke = PC[own]; sw = 0.62; fill = 'var(--panel)'; }
+    // Warm, semi-transparent fills so nodes read as markers resting ON the paper.
+    // Opaque dark discs looked like holes punched through it once the board gained
+    // a parchment ground.
+    let fill = 'color-mix(in srgb, #4a4130 78%, transparent)';
+    let stroke = 'var(--line2)', sw = 0.28;
+    if (isMouth) { fill = 'color-mix(in srgb, #3c4442 82%, transparent)'; stroke = 'var(--water3)'; }
+    if (own !== undefined) {
+      stroke = PC[own]; sw = 0.62;
+      // Tint an owned node toward its owner rather than filling it flat — the ring
+      // alone was easy to miss on a busy board.
+      fill = `color-mix(in srgb, #4a4130 72%, ${PC[own]} 14%)`;
+    }
     if (btargets.has(n.id) || sfrom.has(n.id)) {
       stroke = 'var(--gold)'; sw = 0.75;
       fill = 'color-mix(in srgb, var(--panel) 70%, var(--gold) 16%)';
@@ -376,7 +435,12 @@ function drawBoard() {
           x: bx - 2.9, y: by - 1.55, width: 5.8, height: 3.1, rx: 1.55,
           fill: 'var(--panel2)', stroke: col, 'stroke-width': 0.22, opacity: 0.96,
         }));
-        grp.appendChild(use(`#ic-${T.goods[n.good].icon}`, bx - 1.35, by, 2.2, col));
+        const gi = T.goods[n.good].icon;
+        // Painted goods where we have them; the sprite sheet is the fallback so an
+        // unpicked commodity still renders.
+        grp.appendChild(ART[gi]
+          ? artImage(gi, bx - 1.35, by, 2.7)
+          : use(`#ic-${gi}`, bx - 1.35, by, 2.2, col));
         const cnt = el('text', {
           x: bx + 1.1, y: by + 0.78, 'text-anchor': 'middle',
           'font-size': 2.2, fill: col, 'font-weight': 700,
@@ -385,7 +449,14 @@ function drawBoard() {
         grp.appendChild(cnt);
       } else {
         // Empty node: show the commodity ghosted so the map still reads.
-        grp.appendChild(use(`#ic-${T.goods[n.good].icon}`, bx, by, 2.1, col, 'empty'));
+        const gi = T.goods[n.good].icon;
+        if (ART[gi]) {
+          const im = artImage(gi, bx, by, 2.5);
+          im.setAttribute('opacity', 0.34);
+          grp.appendChild(im);
+        } else {
+          grp.appendChild(use(`#ic-${gi}`, bx, by, 2.1, col, 'empty'));
+        }
       }
     }
 

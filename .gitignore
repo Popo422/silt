@@ -8,3 +8,6 @@ playwright-report/
 .env.*
 !.env.example
 *.key
+
+# Generated assets — kept out of git until a winner is promoted by hand
+assets/gen/

@@ -44,10 +44,22 @@ export function createFX(overlay, opts = {}) {
   };
 
   const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+  // Effects stop at the node edge for the same reason the channels do: a stroke
+  // running to the centre draws a visible X through a semi-transparent node.
+  const radiusOf = opts.radiusOf ?? (() => 0);
   const ends = (k) => {
     const [a, b] = k.split('>');
     const A = nodeAt(a), B = nodeAt(b);
-    return A && B ? [A, B] : null;
+    if (!A || !B) return null;
+    const dx = B.x - A.x, dy = B.y - A.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    const rA = radiusOf(a), rB = radiusOf(b);
+    return [
+      { x: A.x + ux * rA, y: A.y + uy * rA },
+      { x: B.x - ux * rB, y: B.y - uy * rB },
+    ];
   };
 
   // A short-lived label that floats up and fades. The workhorse: it is how coins,

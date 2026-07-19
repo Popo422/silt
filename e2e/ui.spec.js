@@ -125,10 +125,37 @@ test.describe('assets', () => {
   test('renders commodity icons on the board', async ({ page }) => {
     await open(page);
     await page.locator('#btnPlay').click();
+    // A commodity may render as painted art (<image>) or as a sprite (<use>),
+    // depending on whether it has a promoted asset. Assert that SOMETHING marks
+    // each good rather than pinning the mechanism — the old test asserted <use>
+    // specifically and broke the moment art was wired in, which is the test being
+    // wrong, not the board.
     for (const good of ['timber', 'grain', 'salt']) {
-      const n = await page.locator(`#svg use[href="#ic-${good}"]`).count();
-      expect(n, good).toBeGreaterThan(0);
+      const sprites = await page.locator(`#svg use[href="#ic-${good}"]`).count();
+      const art = await page.locator(`#svg image[href*="${good}"]`).count();
+      expect(sprites + art, `${good}: no marker of any kind on the board`).toBeGreaterThan(0);
     }
+  });
+
+  test('painted art loads rather than 404ing', async ({ page }) => {
+    // A broken href renders as nothing in SVG — silently, with no console error.
+    // Without this the board would just quietly lose its goods.
+    const bad = [];
+    page.on('response', r => { if (r.url().includes('/assets/art/') && r.status() >= 400) bad.push(r.url()); });
+    await open(page);
+    await page.locator('#btnPlay').click();
+    await page.waitForTimeout(400);
+    const broken = await page.evaluate(() => {
+      const out = [];
+      for (const im of document.querySelectorAll('#svg image')) {
+        const href = im.getAttribute('href');
+        if (href && !href.startsWith('data:')) out.push(href);
+      }
+      return out;
+    });
+    // Every art href the board asked for must have actually resolved.
+    expect(bad, `failed art requests: ${bad.join(', ')}`).toEqual([]);
+    expect(broken.length, 'board rendered no painted art at all').toBeGreaterThan(0);
   });
 
   test('renders a lighthouse at each mouth', async ({ page }) => {

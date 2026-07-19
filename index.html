@@ -105,7 +105,29 @@
   /* ---------- game ---------- */
   #game{display:flex;height:100vh}
   #game.hide{display:none}
-  #board{flex:1;position:relative;min-width:0}
+  /* Aged-paper surface under the delta. This is the change that answers "why is it
+     so gloomy" — a warm textured ground rather than flat near-black. The texture is
+     held well back (low opacity, darkened via multiply) so it reads as a surface the
+     board sits ON and never competes with the channels drawn over it. */
+  #board{flex:1;position:relative;min-width:0;isolation:isolate}
+  /* A warm ground colour first, then the paper grain on top of it. The texture is
+     a light scan, so 'luminosity' blending stripped every bit of warmth out and
+     left the board exactly as dark as before — the opposite of the point. Tinting
+     underneath and letting the grain modulate it keeps the warmth. */
+  /* Commit to the parchment. Earlier attempts kept the texture at low opacity over
+     a dark ground, which produced a faint olive tint and left the board as dark as
+     it started — timid, and it dodged the actual complaint. The paper is now the
+     ground itself, darkened just enough that light channel strokes and white labels
+     still clear contrast over it. */
+  #board{background:#3a3428}
+  #board::before{content:'';position:absolute;inset:0;z-index:0;pointer-events:none;
+    background:url('./assets/art/art-paper.png') center/cover no-repeat;
+    opacity:.62;filter:brightness(.46) saturate(1.35) contrast(1.05)}
+  /* Vignette: pulls the eye to the delta and keeps the edge labels off a bright field. */
+  #board::after{content:'';position:absolute;inset:0;z-index:0;pointer-events:none;
+    background:radial-gradient(ellipse 78% 72% at 50% 46%,
+      transparent 42%, rgba(24,20,14,.42) 100%)}
+  #svg{position:relative;z-index:1}
   #svg{width:100%;height:100%;display:block}
   /* Effects overlay sits exactly on the board and never intercepts a click. */
   #fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
@@ -205,6 +227,7 @@
   .slot.on{border-style:solid;border-color:var(--gold);background:color-mix(in srgb,var(--panel) 70%,var(--gold) 12%)}
   .slot.filled{border-style:solid;border-color:var(--line2)}
   .slot svg{width:19px;height:19px;color:var(--gold)}
+  .slot img.art{width:26px;height:26px;object-fit:contain}
   .slot .n{font-size:9px;color:var(--dim2);letter-spacing:.12em}
   .slot .a{font-weight:600;font-size:12px;text-transform:capitalize}
   .slot .g{font-size:9px;color:var(--dim2);text-transform:lowercase;margin-top:-1px}
@@ -215,6 +238,10 @@
   .act:hover:not(:disabled){background:color-mix(in srgb,var(--panel) 75%,var(--ink) 8%);border-color:var(--line2)}
   .act:disabled{opacity:.35;cursor:not-allowed}
   .act svg{width:17px;height:17px;color:var(--gold);flex:none;margin-top:1px}
+  /* Painted art sits where an SVG glyph would. Sized a little larger because the
+     art has its own internal margin that a glyph does not. */
+  .act img.art{width:23px;height:23px;flex:none;margin-top:-1px;object-fit:contain}
+  img.art{object-fit:contain;user-select:none;-webkit-user-drag:none}
   .act .txt{display:flex;flex-direction:column;min-width:0}
   .act .t{font-weight:600;text-transform:capitalize;font-size:13px;line-height:1.2}
   .act .t em{font-style:normal;font-weight:400;color:var(--dim2);font-size:10px;
