@@ -780,3 +780,89 @@ test.describe('material textures', () => {
     await expect(page.locator('#s0')).toHaveClass(/filled/);
   });
 });
+
+// Planning is a two-slot commitment you cannot take back once resolved, so the
+// interface has to answer "which one am I about to change?" before the click,
+// not after. These pin the three ways it used to fail to.
+test.describe('changing your plan', () => {
+  test('one slot is always aimed, so a pick never lands somewhere unannounced', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    // Fill both. Aim used to go null here, leaving two identical-looking slots
+    // and no way to know which the next pick would overwrite.
+    await page.locator('[data-act="ship"]').click();
+    await page.locator('[data-act="build"]').click();
+    const aimed = page.locator('.slot.on');
+    await expect(aimed, 'a full plan still needs a visible target').toHaveCount(1);
+  });
+
+  test('the action buttons say which slot they land in', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    const dest = page.locator('[data-act="survey"] .dest');
+    await expect(dest).toHaveText(/to 1/);
+    await page.locator('[data-act="ship"]').click();
+    await expect(dest, 'aim advances to the empty slot').toHaveText(/to 2/);
+    await page.locator('[data-act="build"]').click();
+    // Both full: the next pick destroys something, and it must say so.
+    await expect(dest, 'a destructive pick must be labelled').toHaveText(/replaces/);
+  });
+
+  test('a queued action can be cleared, not just overwritten', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    await page.locator('[data-act="ship"]').click();
+    await expect(page.locator('#s0')).toHaveClass(/filled/);
+    await page.locator('#s0 .clr').click();
+    await expect(page.locator('#s0'), 'clearing should empty the slot').not.toHaveClass(/filled/);
+    await expect(page.locator('#go'), 'a half-empty plan cannot commit').toBeDisabled();
+  });
+
+  test('clicking a filled slot aims at it instead of the default', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    await page.locator('[data-act="ship"]').click();
+    await page.locator('[data-act="build"]').click();
+    await page.locator('#s1').click();
+    await expect(page.locator('#s1')).toHaveClass(/on/);
+    await page.locator('[data-act="survey"]').click();
+    // Slot 1 keeps its action; the pick replaced the one actually aimed at.
+    await expect(page.locator('#s0 .a')).not.toHaveText(/survey/i);
+    await expect(page.locator('#s1 .a')).toHaveText(/tanaw|survey/i);
+  });
+});
+
+// Aiming traps input: until you click a board target, nothing else responds.
+// A trapped state needs a marked exit.
+test.describe('backing out of aiming', () => {
+  // Build, specifically: it always has legal targets on turn one. Dredge needs
+  // gold you do not start with and Survey needs no target at all, so neither
+  // reaches the aiming state at all on the first round.
+  const aim = async (page) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    await page.locator('[data-act="build"]').click();
+    await page.locator('[data-act="survey"]').click();
+    await page.locator('#go').click();
+    await expect(page.locator('#hint')).toBeVisible();
+  };
+
+  test('the aim prompt offers a visible way out', async ({ page }) => {
+    await aim(page);
+    await expect(page.locator('#skipAim'), 'aiming must show its exit').toBeVisible();
+  });
+
+  test('skipping releases the aim and lets the round continue', async ({ page }) => {
+    await aim(page);
+    await page.locator('#skipAim').click();
+    await expect(page.locator('#hint')).toBeHidden();
+    // The action was spent, not refunded — but the game is no longer stuck.
+    await expect(page.locator('#log')).toContainText(/skipped/i);
+  });
+
+  test('Escape backs out of aiming too', async ({ page }) => {
+    await aim(page);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#hint'), 'Escape should release the aim').toBeHidden();
+  });
+});

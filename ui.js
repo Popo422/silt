@@ -5,12 +5,17 @@ import {
 } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
 import { createTutorial, stepText } from './tutorial.js';
+import { createDemo, paintCaption, wireDemo, DEMO_SEED, DEMO_BOTS } from './demo.js';
 import { THEMES, applyTheme, nodeLabel } from './theme.js';
 import { pages, createRulebook } from './rulebook.js';
 import { createFX } from './fx.js';
 import { createPanZoom } from './panzoom.js';
 import { createTips, esc } from './tips.js';
 import { drawBoard as paintBoard, el, insetRadius } from './board.js';
+import {
+  renderContracts, renderPlayers, renderActions, renderSlots, renderAimHint,
+  actionDescriptions, actionTips,
+} from './panel.js';
 
 const HUMAN = 0;
 const PC = ['var(--p0)', 'var(--p1)', 'var(--p2)', 'var(--p3)'];
@@ -19,6 +24,10 @@ const $ = (id) => document.getElementById(id);
 const BOT_KEYS = ['balanced', 'tollkeeper', 'steward', 'expander', 'turtle', 'defector'];
 
 let g, program, picking, pendingAction, seed, queue, tut, config;
+// Watch mode. When active, seat 0 is driven by a bot like every other seat, so
+// the resolution walker never stops for input and the game plays itself. The
+// demo object owns only the commentary laid over that — never the moves.
+let demo = null;
 let roundsPlayed = 0;   // rounds fully resolved this game — drives tutorial gating
 let stepping = false;   // re-entry guard for the async resolution walker
 let committedThisRound = false;   // programs stay face-up from commit to next round
@@ -50,6 +59,16 @@ const fx = createFX(document.getElementById('fx'), {
 const SPEEDS = { off: 0, fast: 0.5, normal: 1 };
 let speed = 'normal';
 
+// 1× -> 2× -> off. Persisted: someone who turns animation off wants it to stay
+// off, not to re-disable it every session.
+//
+// Declared here with the rest of the speed state rather than beside cycleSpeed():
+// renderTutorial() reads SPEED_LABEL far above that point, which worked only
+// because render never runs during module evaluation. That is a crash waiting for
+// someone to move a call.
+const SPEED_ORDER = ['normal', 'fast', 'off'];
+const SPEED_LABEL = { normal: '1×', fast: '2×', off: 'off' };
+
 // Hold time is NOT the effect's full duration. Waiting for every animation to
 // finish made one round take 7.4s — a minute of watching per game. Effects are
 // allowed to overlap: you need only long enough to register that a thing happened
@@ -58,6 +77,7 @@ let speed = 'normal';
 const HOLD_MAX = 420;
 const holdFor = (ms) => Math.min(HOLD_MAX, ms * 0.45) * (SPEEDS[speed] ?? 1);
 const wait = (ms) => (ms > 0 ? new Promise(r => { setTimeout(r, ms); }) : Promise.resolve());
+
 
 const botName = (k) => T.bots[k].name;
 const botDesc = (k) => T.bots[k].desc;
@@ -160,6 +180,7 @@ function buildMenu() {
   }
   $('btnPlay').addEventListener('click', () => start(false));
   $('btnTutorial').addEventListener('click', () => start(true));
+  $('btnWatch').addEventListener('click', startDemo);
   $('btnQuit').addEventListener('click', showMenu);
   $('btnMenu').addEventListener('click', showMenu);
   $('btnAgain').addEventListener('click', () => start(false));
@@ -272,7 +293,13 @@ function wireBook() {
   $('bkPrev').addEventListener('click', () => { book.prev(); renderBook(); });
   $('book').addEventListener('click', (e) => { if (e.target.id === 'book') closeBook(); });
   document.addEventListener('keydown', (e) => {
-    if (!book.open) return;
+    // Escape means "get me out of the thing I am in". The rulebook is modal so it
+    // wins; otherwise it backs out of aiming, which is the only other state that
+    // traps input.
+    if (!book.open) {
+      if (e.key === 'Escape' && pendingAction) { e.preventDefault(); skipAim(); }
+      return;
+    }
     if (e.key === 'Escape') closeBook();
     if (e.key === 'ArrowRight') { book.next(pages(T).length); renderBook(); }
     if (e.key === 'ArrowLeft')  { book.prev(); renderBook(); }
@@ -280,19 +307,19 @@ function wireBook() {
 }
 
 function showMenu() {
+  stopDemo();
   $('menu').classList.remove('hide');
   $('game').classList.add('hide');
   $('ov').classList.remove('on');
 }
 
-function start(tutorial, s = Math.floor(Math.random() * 1e9)) {
+// Everything a new game clears, whether it is played or watched. Extracted
+// because the demo needs the identical reset: two copies drifted the moment one
+// of them forgot `stepping`, and a stale walker flag wedges the next round.
+function resetGame(players, s) {
+  stopDemo();   // a running demo would keep driving the board underneath
   seed = s;
-  TUNING.rounds = config.rounds;
-  g = newGame(config.players, seed);
-  g.players.forEach((p, i) => {
-    p.strat = i === HUMAN ? null : config.bots[i - 1];
-    p.name = i === HUMAN ? (T.id === 'anod' ? 'Ikáw' : 'You') : botName(p.strat);
-  });
+  g = newGame(players, seed);
   committedThisRound = false;
   program = [null, null];
   picking = null;
@@ -307,63 +334,56 @@ function start(tutorial, s = Math.floor(Math.random() * 1e9)) {
   $('ov').classList.remove('on');
   $('menu').classList.add('hide');
   $('game').classList.remove('hide');
-
   tut = createTutorial();
-  if (tutorial) tut.start();
+}
 
+function start(tutorial, s = Math.floor(Math.random() * 1e9)) {
+  TUNING.rounds = config.rounds;
+  resetGame(config.players, s);
+  g.players.forEach((p, i) => {
+    p.strat = i === HUMAN ? null : config.bots[i - 1];
+    p.name = i === HUMAN ? (T.id === 'anod' ? 'Ikáw' : 'You') : botName(p.strat);
+  });
+  if (tutorial) tut.start();
   say(`${T.terms.round.name} 1 — seed ${seed}`, 'hd');
   render();
+}
+
+// Watch a game play itself. The ONLY structural difference from start() is that
+// seat 0 gets a strategy instead of null — that one field is what makes the
+// resolution walker never stop for input, because its human branch is guarded
+// on `pi === HUMAN && !p.strat`. Everything else here is presentation.
+function startDemo() {
+  TUNING.rounds = 8;
+  resetGame(DEMO_BOTS.length, DEMO_SEED);
+  g.players.forEach((p, i) => { p.strat = DEMO_BOTS[i]; p.name = botName(p.strat); });
+
+  // The demo owns its own loop; this object is the whole surface it needs from
+  // the UI, which is what keeps a second game loop out of this module.
+  demo = createDemo({
+    render,
+    step: () => step(),
+    roundOf: () => g.round,
+    rounds: () => TUNING.rounds,
+    wait: (ms) => wait(ms * (SPEEDS[speed] ?? 1)),
+    silent: () => speed === 'off',
+    newRound: (r) => {
+      for (const p of g.players) p.program = STRATEGIES[p.strat](g, p);
+      committedThisRound = true;
+      say(`Round ${r}`, 'hd');
+      queue = { slot: 0, order: seatOrder(g), idx: 0, claimed: new Set() };
+      render();
+    },
+  });
+  demo.start();
+  say(`${T.terms.round.name} 1 — watching`, 'hd');
+  render();
+  demo.run();
 }
 
 // ---------------------------------------------------------------- board
 
 // ---------------------------------------------------------------- panel
-
-
-// ---------------------------------------------------------------- tooltips
-//
-// Plain-English one-liners. These used to be notation — "+1 lalim · 1g · singil",
-// "≤2 → Look" — which reads as an API signature, not a game. A new player cannot
-// decode that, and it was the first thing they saw on every button.
-//
-// Numbers still come from TUNING so the copy cannot drift from the rules.
-function actDesc() {
-  const p = g.players[HUMAN];
-  // "gold" is a mass noun — no plural. This was a ternary with two identical
-  // branches, left over from treating it like a countable.
-  const coin = (n) => `${n} gold`;
-  return {
-    dredge: `Deepen a channel by ${TUNING.dredgeAmount}. Costs ${coin(TUNING.dredgeCoins)}, `
-          + `then others pay you to pass.`,
-    build:  `Found a new settlement. Costs ${coin(buildCost(p))}.`,
-    ship:   `Carry up to ${TUNING.shipCubesMax} goods downstream to the sea.`,
-    survey: `Take ${coin(TUNING.surveyCoins)} and draw ${TUNING.surveyDraw} contracts, keep 1.`,
-  };
-}
-
-// The longer "why would I do this" explanation, shown on hover. The one-liner says
-// what an action does; this says when it is the right call and what it costs you —
-// the part a rulebook would cover and a button cannot.
-function actTip() {
-  const p = g.players[HUMAN];
-  return {
-    dredge: `Repairs one channel and claims it. While it stays deep, every other `
-          + `player pays you ${TUNING.tollPerShip} gold each time they ship through, `
-          + `and you score ${TUNING.rightsVP} points for it at the end. `
-          + `Dredging is how you turn other people's traffic into income.`,
-    build:  `Places a settlement on a node you can reach, bringing its goods online. `
-          + `Costs ${buildCost(p)} gold now and rises with each one you own. `
-          + `Beyond ${TUNING.freeStations} settlements you pay ${TUNING.upkeepPerStation} `
-          + `gold upkeep per extra one every round, and you abandon them if you cannot pay.`,
-    ship:   `Moves up to ${TUNING.shipCubesMax} goods from one of your settlements to `
-          + `the sea, paying ${TUNING.shipPerCube} gold per good plus `
-          + `${TUNING.shipPerChannel} per channel crossed. This is how contracts get `
-          + `filled — and every channel you use silts up by ${TUNING.siltPerShip}.`,
-    survey: `Draws ${TUNING.surveyDraw} contracts and keeps the best one, plus `
-          + `${TUNING.surveyCoins} gold. Contracts are most of your score, so a hand `
-          + `with nothing in it is usually worth fixing before anything else.`,
-  };
-}
 
 function render() {
   // The board renderer reads no globals — everything it needs arrives here, which
@@ -401,121 +421,41 @@ function render() {
   // is draining. Gating on `queue` made the programs vanish the instant the last
   // action resolved — which is exactly when you want to look at what everyone
   // did. Cleared when the next round's programs are wiped.
-  const revealed = committedThisRound;
-  $('pls').innerHTML = g.players.map((p, i) => `
-    <div class="pl ${i === HUMAN ? 'me' : ''}">
-      <span class="dot" style="background:${PC[i]}"></span>
-      <span class="nm">${p.name}</span>
-      <span class="prog" data-tip-title="${esc(p.name)}'s program"
-            data-tip="${esc(revealed
-              ? `Committed ${p.program.filter(Boolean).map(a => T.actions[a].name).join(' then ') || 'nothing'} this round.`
-              : 'Face down until everyone commits. Nothing is hidden — you just cannot see it before you decide.')}">
-        ${[0, 1].map(s => {
-          const a = revealed ? p.program[s] : null;
-          return a
-            ? `<i class="pslot on" style="border-color:${PC[i]}">${icon(ico(a), 'pico')}</i>`
-            : `<i class="pslot"></i>`;
-        }).join('')}
-      </span>
-      <span class="st">
-        <b data-tip="${esc(`Gold. Spent on dredging, founding settlements and paying tolls.`)}"
-           data-tip-title="Gold">${p.coins}<i>gold</i></b>
-        <b data-tip="${esc(`Settlements held. Each works its node; beyond ${TUNING.freeStations} you pay upkeep every round.`)}"
-           data-tip-title="${esc(T.terms.station.name)}">${p.stations.length}<i>${
-             T.id === 'anod' ? 'balangay' : 'sites'}</i></b>
-        <b data-tip="${esc('Contracts fulfilled. These are most of the final score.')}"
-           data-tip-title="Contracts done">${p.done.length}<i>done</i></b>
-      </span>
-    </div>`).join('');
-
-  const d = actDesc();
-  const tips = actTip();
-  // During a gated tutorial step, only the action being taught is live. Letting a
-  // first-time player pick something else strands them: the step never completes,
-  // the hint keeps asking for an action they already spent a slot on, and the only
-  // way out is the skip button. Guidance that can be wandered off is not guidance.
-  const want = tut?.active ? tut.step()?.requires : null;
-  $('acts').innerHTML = ['dredge', 'build', 'ship', 'survey'].map(a => `
-    <button class="act${want && want !== a ? ' dimmed' : ''}"
-            data-act="${a}"
-            ${pendingAction || (want && want !== a) ? 'disabled' : ''}
-            data-tip="${esc(tips[a])}"
-            data-tip-title="${esc(T.actions[a].name)}${
-              T.actions[a].gloss ? ` — ${esc(T.actions[a].gloss)}` : ''}">
-      ${icon(ico(a))}
-      <span class="txt"><span class="t">${T.actions[a].name}${
-        T.actions[a].gloss ? `<em>${T.actions[a].gloss}</em>` : ''}</span>
-      <span class="d">${d[a]}</span></span>
-    </button>`).join('');
-  $('go').textContent = T.id === 'anod' ? 'Itakdâ at tuparín' : 'Commit & resolve';
-  for (const b of document.querySelectorAll('.act')) {
-    b.addEventListener('click', () => setSlot(b.dataset.act));
-  }
-
-  [0, 1].forEach(i => {
-    const s = $('s' + i);
-    const a = program[i];
-    // Keep the slot number visible even when filled — resolution order matters.
-    const slotWord = T.id === 'anod' ? 'UNA' : 'SLOT 1';
-    const slotWord2 = T.id === 'anod' ? 'IKALAWA' : 'SLOT 2';
-    const w = i === 0 ? slotWord : slotWord2;
-    s.innerHTML = a
-      ? `<div class="n">${w}</div>${icon(ico(a))}<div class="a">${T.actions[a].name}</div>` +
-        (T.actions[a].gloss ? `<div class="g">${T.actions[a].gloss}</div>` : '')
-      : `<div class="n">${w}</div><div class="a">—</div>`;
-    s.classList.toggle('on', picking === i);
-    s.classList.toggle('filled', !!a);
+  renderPlayers({
+    el: $, players: g.players, human: HUMAN, revealed: committedThisRound,
+    colors: PC, T, tuning: TUNING, icon, ico, esc,
   });
 
-  const p = g.players[HUMAN];
-  // English inside an English sentence. "to kahit saáng look" mixed the two mid
-  // clause and parsed as neither; themed vocabulary belongs on labels and proper
-  // nouns, not spliced into running prose.
-  const anyMouth = 'any bay';
-  // Hand size against the limit: you can hold a bounded number, and hitting the
-  // cap silently discards a Survey draw.
-  $('ctCount').textContent = p.contracts.length
-    ? `${p.contracts.length}/${TUNING.handLimit}` : '';
-  // Written as a sentence. "30  4 kalakal · 3 urìs → Kanluran" packed four facts
-  // into notation with no verb — you had to already know the game to parse it.
-  $('cts').innerHTML = p.contracts.length
-    ? p.contracts.map(c => {
-        const pts = Math.round(c.vp * TUNING.contractScale);
-        const where = c.mouth ? nodeLabel(T, c.mouth) : anyMouth;
-        const kinds = c.types > 1 ? `${c.types} different kinds` : 'any one kind';
-        return `<div class="ct" data-tip-title="Contract — ${pts} points"
-             data-tip="${esc(`Deliver ${c.need} goods of ${kinds} to ${where}. `
-               + `Goods count once they reach the sea; you keep the points even if `
-               + `the route silts up afterwards.`)}">
-          <span class="vp">${pts}</span>
-          <span class="cbody">Deliver <b>${c.need}</b> goods, <b>${kinds}</b>,
-            to <b>${where}</b></span>
-        </div>`;
-      }).join('')
-    : `<div class="ct empty">No contracts yet — use ${T.actions.survey.name} to draw some.</div>`;
+  const target = aimed();
+  renderActions({
+    el: $, T,
+    desc: actionDescriptions(TUNING, buildCost(g.players[HUMAN])),
+    tips: actionTips(TUNING, buildCost(g.players[HUMAN])),
+    want: tut?.active ? tut.step()?.requires : null,
+    disabled: !!pendingAction,
+    target, replacing: !!program[target],
+    icon, ico, esc, onPick: setSlot,
+  });
 
+  renderSlots({ el: $, program, T, target, pendingAction, icon, ico });
+
+  renderContracts({
+    el: $, player: g.players[HUMAN], T, tuning: TUNING, nodeLabel, esc,
+  });
   $('go').disabled = !(program[0] && program[1]) || !!pendingAction;
-
-  const hint = $('hint');
-  if (pendingAction) {
-    hint.style.display = 'block';
-    hint.textContent = (T.id === 'anod' ? {
-      dredge: `Pindutín ang gintóng sapà — hukayin at angkinín ang singil.`,
-      build: `Pindutín ang tanáw na lugár upang magtayô ng balangay.`,
-      ship: `Pindutín ang iyóng balangay upang maglayág.`,
-    } : {
-      dredge: 'Click a gold channel to dredge it and claim its toll.',
-      build: 'Click a highlighted node to build there.',
-      ship: 'Click one of your stations to ship from it.',
-    })[pendingAction] ?? '';
-  } else hint.style.display = 'none';
-
+  renderAimHint({ el: $, pendingAction, T });
+  $('skipAim')?.addEventListener('click', skipAim);
   renderTutorial();
 }
 
 function renderTutorial() {
   const box = $('tut');
   document.querySelectorAll('.uiPulse').forEach(e => e.classList.remove('uiPulse'));
+  // Watch mode paints the same box with transport controls instead of steps.
+  if (demo?.active) return paintCaption(box, demo, {
+    T, round: Math.min(g.round, TUNING.rounds), rounds: TUNING.rounds,
+    speedLabel: SPEED_LABEL[speed], el: $,
+  });
   const s = tut?.step();
   if (!s) { box.classList.remove('on'); return; }
 
@@ -547,16 +487,52 @@ function renderTutorial() {
   if (hl?.kind === 'board') $('board')?.classList.add('uiPulse');
 }
 
+// Leave watch mode. Anything that ends the demo comes through here so the flag
+// clears before the walker's next pause check — otherwise a paused demo would
+// keep the new game suspended on a gate nobody can see.
+function stopDemo() {
+  if (!demo) return;
+  demo.paused = false;
+  demo.stop();
+  demo = null;
+  $('tut').classList.remove('watching');
+}
+
+// Which slot the next action click lands in. Never null once the board is live:
+// an unaimed pick used to silently overwrite slot 1, and with both slots looking
+// identical there was no way to tell which one you were about to lose.
+function aimed() {
+  // `picking` is declared uninitialised, so test for both empties — `undefined`
+  // slipping through here would index program[undefined] on the first render.
+  if (picking === 0 || picking === 1) return picking;
+  if (!program[0]) return 0;
+  if (!program[1]) return 1;
+  return 0;              // both full — replace the first, and SAY so on the buttons
+}
+
 function setSlot(a) {
-  const i = picking ?? (program[0] ? (program[1] ? 0 : 1) : 0);
+  const i = aimed();
   program[i] = a;
-  picking = i === 0 && !program[1] ? 1 : null;
+  // Advance to the empty slot if there is one, otherwise keep aim where it is so
+  // the highlight still shows what a second click would replace.
+  picking = !program[1] ? 1 : (!program[0] ? 0 : i);
+  render();
+  pollTutorial();
+}
+
+function clearSlot(i) {
+  program[i] = null;
+  picking = i;
   render();
   pollTutorial();
 }
 
 for (const s of document.querySelectorAll('.slot')) {
-  s.addEventListener('click', () => { picking = +s.dataset.slot; render(); });
+  s.addEventListener('click', (e) => {
+    const i = +s.dataset.slot;
+    if (e.target.closest('.clr')) clearSlot(i);
+    else { picking = i; render(); }
+  });
 }
 
 function pollTutorial() {
@@ -602,6 +578,7 @@ async function step() {
       if (queue.idx >= queue.order.length) {
         if (queue.slot === 0) {
           queue = { slot: 1, order: seatOrder(g), idx: 0, claimed: new Set() };
+          if (demo?.ambient(g.round, 1)) { render(); await demo.hold(); }
           continue;
         }
         queue = null;
@@ -614,7 +591,15 @@ async function step() {
       queue.idx++;
       if (!action) continue;
 
-      if (pi === HUMAN) {
+      // Watch mode holds between actions so each one can be read as a discrete
+      // beat rather than a blur.
+      if (demo?.active) await demo.unpaused();
+      if (demo && !demo.active) return;   // quit mid-round
+
+      // Seat 0 is only "the human" when nobody is driving it. In watch mode it
+      // carries a strategy like every other seat, and this branch must not claim
+      // it — otherwise the walker stops dead waiting for a click that never comes.
+      if (pi === HUMAN && !p.strat) {
         const needsTarget =
           (action === 'dredge' && dredgeTargets(g).length && p.coins >= TUNING.dredgeCoins) ||
           (action === 'build' && buildTargets(g, p).length && p.coins >= buildCost(p)) ||
@@ -666,6 +651,17 @@ async function resolveHuman(choice) {
   step();
 }
 
+// Aiming was a one-way door: click an action, and the only exit was clicking a
+// board target. Changing your mind — or misreading which channel was affordable —
+// left you stuck with no visible way out. Resolution is already underway by this
+// point, so the action cannot be refunded; it resolves with no target, the same
+// path taken when no legal target exists at all. Said plainly on the button.
+function skipAim() {
+  if (!pendingAction) return;
+  say(`${T.actions[pendingAction].name}: skipped.`);
+  resolveHuman({});
+}
+
 function pickShip(from) {
   const opts = shipOptions(g, g.players[HUMAN]).filter(o => o.from === from);
   if (!opts.length) return;
@@ -685,13 +681,30 @@ async function flush({ actor = null } = {}) {
   g.events = [];
   render();
 
-  if (!events.length || speed === 'off') return;
+  // Commentary is information, not decoration, so it still fires with effects
+  // turned off — someone who disabled animation is not asking to be told less.
+  // The visual effects below are what 'off' actually suppresses.
+  if (!events.length) return;
+  if (speed === 'off') return reactToEvents(events);
 
   if (actor !== null) setActor(actor);
   let longest = 0;
   for (const ev of events) longest = Math.max(longest, fx.play(ev));
   await wait(holdFor(longest));
   setActor(null);
+
+  await reactToEvents(events);
+}
+
+// Commentary comes AFTER the effect has played: the caption points at something
+// the viewer has just watched happen rather than pre-empting it. Only one beat
+// per flush — two captions swapping inside a second cannot be read, and the
+// rarer beat is the one worth keeping.
+async function reactToEvents(events) {
+  if (!demo?.active) return;
+  for (const ev of events) {
+    if (demo.react(ev, { g, T, round: g.round })) { render(); await demo.hold(); return; }
+  }
 }
 
 // Resolves once the resolution walker is idle — either the round finished or it
@@ -703,11 +716,6 @@ function settled() {
     tick();
   });
 }
-
-// 1× -> 2× -> off. Persisted: someone who turns animation off wants it to stay
-// off, not to re-disable it every session.
-const SPEED_ORDER = ['normal', 'fast', 'off'];
-const SPEED_LABEL = { normal: '1×', fast: '2×', off: 'off' };
 
 function cycleSpeed() {
   speed = SPEED_ORDER[(SPEED_ORDER.indexOf(speed) + 1) % SPEED_ORDER.length];
@@ -771,12 +779,25 @@ function finish() {
   $('ov').classList.add('on');
   $('ph').textContent = T.id === 'anod' ? 'Tapós na' : 'Game over';
   tut?.stop();
+  // A watched game ends like any other: the caption must not sit over the score
+  // table still offering to pause a game that is already finished.
+  stopDemo();
   renderTutorial();
 }
 
-$('tutNext').addEventListener('click', () => { tut?.next(); render(); });
-$('tutSkip').addEventListener('click', () => { tut?.stop(); render(); });
-$('tutSkipStep').addEventListener('click', () => { tut?.next(); render(); });
+// The tutorial box's three buttons do double duty in watch mode. wireDemo owns
+// that branching so this module keeps one binding per control.
+wireDemo({
+  el: $,
+  isWatching: () => !!demo?.active,
+  togglePause: () => { demo.paused = !demo.paused; render(); },
+  cycleSpeed: () => { cycleSpeed(); render(); },
+  // "Play it myself" — the demo exists to make someone want to play, so the
+  // exit drops straight into a real game rather than back to the menu.
+  takeOver: () => { stopDemo(); start(false); },
+  tutNext: () => { tut?.next(); render(); },
+  tutStop: () => { tut?.stop(); render(); },
+});
 
 // ---------------------------------------------------------------- test hooks
 
@@ -799,6 +820,14 @@ window.SILT = {
     return resolveHuman(chooseTarget(g, p, pendingAction, 'balanced') ?? {}).then(settled);
   },
   tutorial: () => tut && ({ active: tut.active, ...tut.progress(), id: tut.step()?.id }),
+  // Watch mode. `beat` is the caption currently showing, which is what a test
+  // asserts on — the moves themselves are the bots' and are covered elsewhere.
+  watch: startDemo,
+  demo: () => demo && ({ active: demo.active, paused: demo.paused,
+    beat: demo.beat?.id ?? null, fired: [...demo.fired] }),
+  demoPause: () => { if (demo) demo.paused = true; render(); },
+  demoResume: () => { if (demo) demo.paused = false; render(); },
+  demoStop: stopDemo,
   tutNext: () => { tut?.next(); render(); },
   score: () => score(g),
   seed: () => seed,
