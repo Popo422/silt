@@ -627,8 +627,26 @@
     .dots button{width:10px;height:10px}
   }
 
-  .pulse{animation:pulse 1.5s ease-in-out infinite}
-  @keyframes pulse{0%,100%{filter:none}50%{filter:drop-shadow(0 0 7px var(--gold))}}
+  /* A glow alone was not enough. The board is dark and already gold-heavy, so an
+     animated drop-shadow read as ambient lighting rather than "click this" —
+     first-time players missed it entirely. Brightness and scale carry the signal
+     now; the glow is just support. */
+  .pulse{animation:pulse 1.25s ease-in-out infinite;transform-box:fill-box;
+    transform-origin:center}
+  @keyframes pulse{
+    0%,100%{filter:none;transform:scale(1)}
+    50%{filter:drop-shadow(0 0 9px var(--gold)) brightness(1.35);transform:scale(1.09)}}
+  /* The expanding ring around a legal target. Purely decorative — it carries no
+     pointer events, so it can never intercept the click it is advertising. */
+  .beacon{fill:none;stroke:var(--gold);stroke-width:.5;pointer-events:none;
+    transform-box:fill-box;transform-origin:center;
+    animation:beacon 1.6s ease-out infinite}
+  @keyframes beacon{
+    0%{transform:scale(.85);opacity:.85}
+    100%{transform:scale(1.7);opacity:0}}
+  @media (prefers-reduced-motion:reduce){
+    .pulse,.beacon{animation:none}
+    .beacon{opacity:.6;transform:scale(1.25)}}
   .uiPulse{box-shadow:0 0 0 2px var(--gold),0 0 16px rgba(224,164,88,.45)!important;
     border-radius:7px}
   text{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;user-select:none}

@@ -128,7 +128,11 @@ export function createSpeech() {
       if (!text) return;
       const u = new SpeechSynthesisUtterance(text);
       if (voice) u.voice = voice;
-      u.rate = 1.05;    // default is a touch slower than a person presenting
+      // Below default on purpose. This was 1.05 — brisk, like a presenter who
+      // knows the material — but the audience here is hearing the rules for the
+      // first time and has a board to look at while listening. Slower than feels
+      // natural to write is about right to learn from.
+      u.rate = 0.88;
       u.pitch = 1;
       u.volume = 1;
       try { synth.speak(u); } catch { /* nothing to do about a refused utterance */ }

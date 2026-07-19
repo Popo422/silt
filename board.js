@@ -149,12 +149,32 @@ export function drawBoard(ctx) {
       'stroke-width': w + 0.5, 'stroke-linecap': 'round',
     }));
 
+    // The number on a channel and the coloured ring around it are the two things
+    // a new player asks about first, and nothing on the board explained either.
+    // Nodes had tooltips; channels had none.
+    const owner = g.rights[k];
+    const ownerName = owner !== null && owner !== undefined
+      ? g.players[owner]?.name : null;
+    const tip = d === 0
+      ? 'Dried up. This channel is gone for good — no boat can cross it and it '
+        + 'cannot be dredged back. Every route that used it has to go around.'
+      : `Depth ${d}. A boat may cross any channel with depth 1 or more, and each `
+        + `crossing wears it down by ${TUNING.siltPerShip}. At depth 0 it dies `
+        + `permanently.`
+        + (ownerName
+          ? ` The ring means ${ownerName} dredged it: everyone else pays them `
+            + `${TUNING.tollPerShip} gold to pass, and it is worth points at the `
+            + `end while it stays deep.`
+          : ' Unclaimed — dredge it to collect a toll from everyone who passes.');
+
     svg.appendChild(el('path', {
       d: pathD, fill: 'none',
       stroke: `url(#tile${d})`,
       'stroke-width': w, 'stroke-linecap': 'round',
       opacity: d === 0 ? 0.9 : 1,
       'data-ch': k, 'data-depth': d, 'data-rights': g.rights[k] ?? '',
+      'data-tip-title': d === 0 ? 'Dead channel' : `Channel — depth ${d}`,
+      'data-tip': tip,
       class: 'ch',
     }));
 
@@ -175,15 +195,22 @@ export function drawBoard(ctx) {
       }));
     }
 
-    if (dredgeable) {
-      // Hit target follows the same curve as the ribbon. A straight-line target
-      // over a meandering channel misses at the bends.
-      const hit = el('path', { d: pathD, fill: 'none',
-        stroke: 'transparent', 'stroke-width': Math.max(5, w + 3), 'data-hit': k,
-        'pointer-events': 'stroke' });
-      hit.style.cursor = 'pointer';
-      hitLayer.push(hit);
-    }
+    // Hit target follows the same curve as the ribbon. A straight-line target
+    // over a meandering channel misses at the bends.
+    //
+    // Built for EVERY channel, not just dredgeable ones. It used to exist only
+    // while aiming a dredge, which meant a channel could not be hovered the rest
+    // of the time — so the depth number and the owner's marker, the two things
+    // players ask about first, had no way to explain themselves.
+    const hit = el('path', { d: pathD, fill: 'none',
+      stroke: 'transparent', 'stroke-width': Math.max(5, w + 3),
+      'pointer-events': 'stroke',
+      'data-tip-title': d === 0 ? 'Dead channel' : `Channel — depth ${d}`,
+      'data-tip': tip,
+      ...(dredgeable ? { 'data-hit': k } : {}),
+    });
+    if (dredgeable) hit.style.cursor = 'pointer';
+    hitLayer.push(hit);
     if (g.rights[k] !== null && d > 0) tolls.push([A, B, g.rights[k], pathD]);
   }
 
@@ -219,8 +246,33 @@ export function drawBoard(ctx) {
       } catch { /* getPointAtLength needs layout; fall back to the midpoint */ }
       probe.remove();
     }
-    svg.appendChild(el('circle', { cx: mx, cy: my, r: 1.05, fill: PC[o],
-      stroke: 'rgba(20,16,10,.85)', 'stroke-width': 0.32, 'data-toll': o,
+    // A filled disc in the owner's colour, not a thin ring. The ring read as
+    // decoration at board scale — dark outline on dark water — and gave no clue
+    // that it meant "somebody owns this". Solid colour plus a light rim makes it
+    // an obvious game piece sitting on the channel.
+    // "Which of these did I dredge?" had no answer on the board: every claim was
+    // the same disc in a different colour, so telling yours apart meant
+    // remembering which colour you were. Yours gets a bright double rim.
+    const mine = o === HUMAN;
+    svg.appendChild(el('circle', { cx: mx, cy: my, r: mine ? 1.75 : 1.5,
+      fill: 'rgba(20,16,10,.9)', stroke: 'none' }));
+    if (mine) {
+      svg.appendChild(el('circle', { cx: mx, cy: my, r: 1.62, fill: 'none',
+        stroke: 'var(--gold)', 'stroke-width': 0.26, opacity: 0.95 }));
+    }
+    svg.appendChild(el('circle', { cx: mx, cy: my, r: 1.25, fill: PC[o],
+      stroke: mine ? 'rgba(255,248,230,1)' : 'rgba(255,240,214,.75)',
+      'stroke-width': mine ? 0.4 : 0.26, 'data-toll': o,
+      'data-tip-title': mine
+        ? 'You dredged this channel'
+        : `${g.players[o]?.name ?? 'Claimed'} owns this channel`,
+      'data-tip': mine
+        ? `Every other player pays you ${TUNING.tollPerShip} gold to ship through `
+          + `here, and it scores you ${TUNING.rightsVP} points at the end if it is `
+          + `still deep.`
+        : `You pay ${g.players[o]?.name ?? 'them'} ${TUNING.tollPerShip} gold to `
+          + `ship through here. It scores them ${TUNING.rightsVP} points at the `
+          + `end if the channel is still deep.`,
       class: hl?.kind === 'rights' ? 'pulse' : '' }));
   }
 
@@ -231,18 +283,29 @@ export function drawBoard(ctx) {
     // The board shows an abbreviated label ("Meycau", "Parañaque"), so the full
     // place name and the node's stock go in a tooltip. nodeName existed for
     // exactly this and had no caller until now.
-    const stock = MOUTHS.includes(n.id) ? '' :
-      ` — holds ${g.cubes[n.id]} ${T.goods[n.good]?.gloss || n.good}`;
+    // "Tier 0 settlement — holds 4 bamboo" assumed you knew what a tier was and
+    // never said what the badge on the node actually IS. The number and icon
+    // floating above a node are the first thing a new player points at.
+    const good = T.goods[n.good]?.gloss || n.good;
+    const stock = MOUTHS.includes(n.id) ? ''
+      : `The badge above it shows what it is holding: ${g.cubes[n.id]} ${good}. `
+        + `${T.actions.ship.name} carries goods from here downstream to a bay, `
+        + `which is how contracts get filled.`;
     const grp = el('g', {
       class: 'node', 'data-node': n.id,
       'data-tip-title': nodeName(T, n.id),
       'data-tip': MOUTHS.includes(n.id)
         ? 'Open sea. Goods delivered here score, and contracts naming this bay are filled here.'
-        : `Tier ${n.tier} settlement${stock}.`,
+        : `A settlement site producing ${good}. ${stock}`,
     });
 
-    const highlighted =
-      (hl?.kind === 'node' && (hl.ids === 'own'
+    // Tutorial highlight OR a legal target for the action being aimed right now.
+    // This used to be the tutorial case only, so during ordinary play the legal
+    // targets got a slightly warmer fill and nothing else — no motion at all.
+    // "Click a highlighted node" is a poor instruction when nothing is moving.
+    const isTarget = btargets.has(n.id) || sfrom.has(n.id);
+    const highlighted = isTarget
+      || (hl?.kind === 'node' && (hl.ids === 'own'
         ? g.players[HUMAN].stations.includes(n.id)
         : hl.ids?.includes?.(n.id)));
 
@@ -262,6 +325,12 @@ export function drawBoard(ctx) {
     if (btargets.has(n.id) || sfrom.has(n.id)) {
       stroke = 'var(--gold)'; sw = 0.75;
       fill = 'color-mix(in srgb, var(--panel) 70%, var(--gold) 16%)';
+    }
+
+    // Expanding ring under the node, so a legal target announces itself from
+    // across the board instead of relying on a glow the eye reads as lighting.
+    if (highlighted) {
+      grp.appendChild(el('circle', { cx: n.x, cy: n.y, r: r + 0.6, class: 'beacon' }));
     }
 
     grp.appendChild(el('circle', { cx: n.x, cy: n.y, r, fill, stroke, 'stroke-width': sw,

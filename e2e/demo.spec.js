@@ -6,10 +6,11 @@ import { test, expect } from '@playwright/test';
 
 // Watch mode deliberately ignores the speed setting — the captions are the whole
 // point of the mode and they need time to be read, so a full 8-round demo runs
-// about 45 seconds no matter what the toggle says. Tests that wait for it to
+// about two minutes no matter what the toggle says — the teaching intro alone is
+// ~50s, and each caption is held long enough to actually be read. Tests that wait for it to
 // finish have to budget for that; tests that only need it RUNNING should assert
 // on progress and move on.
-const FULL_DEMO_MS = 90_000;
+const FULL_DEMO_MS = 150_000;
 
 const boot = async (page) => {
   await page.goto('/index.html');
@@ -82,9 +83,12 @@ test('narration appears and is themed', async ({ page }) => {
 test('pause holds the game, resume continues it', async ({ page }) => {
   await boot(page);
   await page.evaluate(() => window.SILT.watch());
-  // Pause only proves something if the demo is still running when it lands.
-  await expect.poll(() => page.evaluate(() => window.SILT.demo()?.active ?? false))
-    .toBe(true);
+  test.setTimeout(120_000);
+  // Pause during PLAY, not during the teaching intro: the intro logs nothing, so
+  // "did the log stop growing" would be trivially true there and prove nothing.
+  await expect.poll(() => page.evaluate(() =>
+    document.querySelectorAll("#log div").length), { timeout: 60_000 })
+    .toBeGreaterThan(1);
   await page.evaluate(() => window.SILT.demoPause());
 
   const at = () => page.evaluate(() => ({
@@ -107,7 +111,7 @@ test('pause holds the game, resume continues it', async ({ page }) => {
 
   await page.evaluate(() => window.SILT.demoResume());
   await expect.poll(() => page.evaluate(() =>
-    document.querySelectorAll('#log div').length), { timeout: 25_000 })
+    document.querySelectorAll('#log div').length), { timeout: 45_000 })
     .toBeGreaterThan(settled.log);
 });
 
@@ -216,8 +220,8 @@ test('each caption is spoken once, not restarted on every repaint', async ({ pag
   // render() runs on every effect and repaint. Speaking unconditionally would
   // restart the sentence several times per beat, so utterances must not
   // outnumber the beats that fired.
-  await expect.poll(() => page.evaluate(() => window.__spoken.length))
-    .toBeGreaterThan(1);
+  await expect.poll(() => page.evaluate(() => window.__spoken.length),
+    { timeout: 40_000 }).toBeGreaterThan(1);
   await page.waitForTimeout(3000);
   const spoken = await page.evaluate(() => window.__spoken);
   const fired = await page.evaluate(() => window.SILT.demo()?.fired ?? []);

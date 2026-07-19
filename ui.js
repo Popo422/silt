@@ -385,6 +385,9 @@ function startDemo() {
     silent: () => false,
     // Lets the demo hold a caption until the voice has finished saying it.
     speaking: () => speech.speaking(),
+    // The theme, so the demo can measure its own caption length. Everything
+    // else it needs it already has.
+    theme: () => T,
     newRound: (r) => {
       for (const p of g.players) p.program = STRATEGIES[p.strat](g, p);
       committedThisRound = true;
