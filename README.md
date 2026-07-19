@@ -97,3 +97,5 @@ Current results (400 games each, competent fields): heads-up is 51/49, the 4-way
 ### Tuning
 
 Everything is in `TUNING` at the top of `engine.js`. Change a value, run `npm run sim`, read the win rates. The simulator is the point — it turns "I think dredging is too strong" into a number in about four seconds.
+
+![SILT prototype](screenshot.png)
