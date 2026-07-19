@@ -190,6 +190,25 @@ export function pages(T) {
         </ul>`,
     },
     {
+      title: anod ? 'Mga Salitâ' : 'Glossary',
+      sub: 'the words on the board',
+      body: anod ? `
+        <dl class="acts">
+          ${Object.values(A).map(a =>
+            `<dt>${a.name}<em>${a.gloss}</em></dt><dd>${a.note}</dd>`).join('')}
+          ${Object.values(G).map(x =>
+            `<dt>${x.name}</dt><dd>${x.gloss}</dd>`).join('')}
+          ${['station', 'mouth', 'channel', 'silted', 'coins', 'toll', 'player', 'round']
+            .map(k => `<dt>${X[k].name}</dt><dd>${X[k].gloss}</dd>`).join('')}
+        </dl>
+        <p class="tip">Every place name on the board is a real settlement of the
+        pre-colonial delta. <b>Maynilà</b> sits at the centre because it really did
+        control the junction everyone had to cross.</p>` : `
+        <p>This variant uses plain English throughout. Switch to <b>Anód</b> from
+        the menu for the Filipino setting, its place names and vocabulary.</p>
+        <p class="tip">The rules are identical either way — only the words change.</p>`,
+    },
+    {
       title: anod ? 'Ang Kasaysayan' : 'The Setting',
       sub: 'what this is based on',
       body: `

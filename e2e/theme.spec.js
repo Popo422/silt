@@ -148,12 +148,28 @@ test.describe('theme', () => {
     expect(plain).toContain('tollkeeper');
   });
 
-  test('shows a glossary only for the themed variant', async ({ page }) => {
+  // The inline menu glossary is hidden on short viewports to keep the menu from
+  // scrolling, so assert it on a tall one. The same content is always available
+  // as a rulebook page — covered by the test below.
+  test('shows an inline glossary for the themed variant on tall screens', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1000 });
     await open(page);
     await expect(page.locator('#gloss')).toBeVisible();
     await expect(page.locator('#glossBody')).toContainText('bamboo');
     await page.locator('[data-theme="silt"]').click();
     await expect(page.locator('#gloss')).toBeHidden();
+  });
+
+  test('always reaches the vocabulary through the rulebook', async ({ page }) => {
+    await open(page);
+    const total = await page.evaluate(() => window.SILT.book().total);
+    let found = false;
+    for (let i = 0; i < total && !found; i++) {
+      await page.evaluate(n => window.SILT.openBook(n), i);
+      const t = await page.locator('#bkBody').textContent();
+      if (t.includes('Kawayan') && t.includes('bamboo')) found = true;
+    }
+    expect(found).toBe(true);
   });
 
   // A foreigner must always be able to follow what happened.
