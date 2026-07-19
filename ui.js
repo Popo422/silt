@@ -299,9 +299,70 @@ function use(href, x, y, size, color, cls = '') {
   return u;
 }
 
+// Water/land textures by depth. These are the components a printed edition would
+// have — depth is the core read of the game, so the four states must differ at a
+// glance rather than on inspection.
+const TILES = {
+  3: './assets/art/water-deep.png',
+  2: './assets/art/water-mid.png',
+  1: './assets/art/water-shallow.png',
+  0: './assets/art/water-silted.png',
+};
+const LAND_TILE = './assets/art/land-delta.png';
+
+// Deterministic jitter. A river that meanders differently on every repaint is
+// nauseating, so the wobble is a pure function of the channel key — same channel,
+// same curve, forever.
+function hash01(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) % 10000) / 10000;
+}
+
+// A channel as a curved ribbon rather than a straight stroke. Straight lines
+// between grid-aligned nodes is what made the board read as a node graph: rivers
+// meander, and the meander is most of the difference.
+function channelPath(A, B, key, width) {
+  const dx = B.x - A.x, dy = B.y - A.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len, ny = dx / len;            // perpendicular
+  // Two control points pushed to opposite sides gives an S-curve, which reads as
+  // a natural channel; a single offset just looks like a bent pipe.
+  const a = (hash01(key) - 0.5) * 2;
+  const b = (hash01(key + 'b') - 0.5) * 2;
+  const amp = Math.min(2.6, len * 0.16);
+  const c1 = { x: A.x + dx * 0.30 + nx * amp * a, y: A.y + dy * 0.30 + ny * amp * a };
+  const c2 = { x: A.x + dx * 0.70 + nx * amp * b, y: A.y + dy * 0.70 + ny * amp * b };
+  return { d: `M${A.x},${A.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${B.x},${B.y}`, width };
+}
+
+// Pattern defs so a stroke can be painted with a texture. SVG cannot stroke with
+// an image directly, so each depth gets a <pattern> that strokes reference by id.
+function ensureDefs(svg) {
+  const defs = el('defs');
+  for (const [depth, href] of Object.entries(TILES)) {
+    const pat = el('pattern', {
+      id: `tile${depth}`, patternUnits: 'userSpaceOnUse',
+      width: 26, height: 26, patternContentUnits: 'userSpaceOnUse',
+    });
+    pat.appendChild(el('image', { href, x: 0, y: 0, width: 26, height: 26,
+      preserveAspectRatio: 'xMidYMid slice' }));
+    defs.appendChild(pat);
+  }
+  const land = el('pattern', {
+    id: 'tileLand', patternUnits: 'userSpaceOnUse',
+    width: 46, height: 46, patternContentUnits: 'userSpaceOnUse',
+  });
+  land.appendChild(el('image', { href: LAND_TILE, x: 0, y: 0, width: 46, height: 46,
+    preserveAspectRatio: 'xMidYMid slice' }));
+  defs.appendChild(land);
+  svg.appendChild(defs);
+}
+
 function drawBoard() {
   const svg = $('svg');
   svg.innerHTML = '';
+  ensureDefs(svg);
 
   const hl = tut?.step()?.highlight?.() ?? null;
   const owner = {};
@@ -340,25 +401,58 @@ function drawBoard() {
     const [A, B] = inset(A0, B0, radiusOf(a), radiusOf(b));
     const dredgeable = pendingAction === 'dredge' && d > 0 && d < TUNING.maxDepth;
 
-    svg.appendChild(el('line', {
-      x1: A.x, y1: A.y, x2: B.x, y2: B.y,
-      stroke: dredgeable ? 'var(--gold)' : depthColor(d),
-      'stroke-width': d === 0 ? 0.3 : 0.45 + d * 0.45,
-      'stroke-linecap': 'round',
-      'stroke-dasharray': d === 0 ? '1.1 1.2' : '',
-      opacity: d === 0 ? 0.75 : 1,
+    // Channels are painted ribbons of water texture, not coloured strokes. Width
+    // still carries depth — that read is the game's core signal and must survive
+    // even if a texture fails to load.
+    // Narrower than the first pass: at 1.5+d*0.85 the deep channels nearly touched
+    // the node rings and the board felt congested. Depth still spans a 2.4x range,
+    // which is what carries the read.
+    const w = d === 0 ? 1.05 : 1.05 + d * 0.62;
+    const { d: pathD } = channelPath(A, B, k, w);
+
+    // Dark bed under every channel: gives the ribbon an edge against the parchment
+    // and keeps a dead channel visible as a scar rather than vanishing.
+    svg.appendChild(el('path', {
+      d: pathD, fill: 'none', stroke: 'rgba(28,22,14,.55)',
+      'stroke-width': w + 0.5, 'stroke-linecap': 'round',
+    }));
+
+    svg.appendChild(el('path', {
+      d: pathD, fill: 'none',
+      stroke: `url(#tile${d})`,
+      'stroke-width': w, 'stroke-linecap': 'round',
+      opacity: d === 0 ? 0.9 : 1,
       'data-ch': k, 'data-depth': d, 'data-rights': g.rights[k] ?? '',
       class: 'ch',
     }));
 
+    // Depth tint over the texture. The tiles alone are too similar in value at
+    // board scale; this restores the at-a-glance read the flat colours had.
+    svg.appendChild(el('path', {
+      d: pathD, fill: 'none', stroke: depthColor(d),
+      'stroke-width': w, 'stroke-linecap': 'round',
+      opacity: d === 0 ? 0.34 : 0.26,
+      'mix-blend-mode': 'overlay',
+    }));
+
     if (dredgeable) {
-      const hit = el('line', { x1: A.x, y1: A.y, x2: B.x, y2: B.y,
-        stroke: 'transparent', 'stroke-width': 5, 'data-hit': k,
+      svg.appendChild(el('path', {
+        d: pathD, fill: 'none', stroke: 'var(--gold)',
+        'stroke-width': w + 0.35, 'stroke-linecap': 'round',
+        opacity: 0.75, class: 'pulse',
+      }));
+    }
+
+    if (dredgeable) {
+      // Hit target follows the same curve as the ribbon. A straight-line target
+      // over a meandering channel misses at the bends.
+      const hit = el('path', { d: pathD, fill: 'none',
+        stroke: 'transparent', 'stroke-width': Math.max(5, w + 3), 'data-hit': k,
         'pointer-events': 'stroke' });
       hit.style.cursor = 'pointer';
       hitLayer.push(hit);
     }
-    if (g.rights[k] !== null && d > 0) tolls.push([A, B, g.rights[k]]);
+    if (g.rights[k] !== null && d > 0) tolls.push([A, B, g.rights[k], pathD]);
   }
 
   // --- ship route preview
@@ -366,21 +460,35 @@ function drawBoard() {
     for (const o of shipOptions(g, g.players[HUMAN])) {
       for (const k of o.path) {
         const [a, b] = k.split('>');
-        // Inset like the channels themselves, or the preview draws its own X
-        // through every node on the route.
+        // Follow the channel's own curve, or the preview cuts across the meander
+        // and points at water that is not on the route.
         const [A, B] = inset(NODE_BY_ID[a], NODE_BY_ID[b], radiusOf(a), radiusOf(b));
-        svg.appendChild(el('line', { x1: A.x, y1: A.y, x2: B.x, y2: B.y,
-          stroke: 'var(--gold)', 'stroke-width': 0.28, opacity: .5,
+        const { d: pd } = channelPath(A, B, k, 1);
+        svg.appendChild(el('path', { d: pd, fill: 'none',
+          stroke: 'var(--gold)', 'stroke-width': 0.4, opacity: .55,
           'stroke-dasharray': '.7 .8' }));
       }
     }
   }
 
   // --- toll markers (above the water)
-  for (const [A, B, o] of tolls) {
-    const mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2;
-    svg.appendChild(el('circle', { cx: mx, cy: my, r: 0.95, fill: PC[o],
-      stroke: 'var(--bg)', 'stroke-width': 0.3, 'data-toll': o,
+  for (const [A, B, o, pathD] of tolls) {
+    // Sit the marker ON the channel by sampling its curve. The straight-line
+    // midpoint drifts off the water wherever a channel bends hardest — which is
+    // exactly where the marker is most likely to be misread as belonging to a
+    // neighbouring channel.
+    let mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2;
+    if (pathD) {
+      const probe = el('path', { d: pathD });
+      svg.appendChild(probe);
+      try {
+        const pt = probe.getPointAtLength(probe.getTotalLength() / 2);
+        mx = pt.x; my = pt.y;
+      } catch { /* getPointAtLength needs layout; fall back to the midpoint */ }
+      probe.remove();
+    }
+    svg.appendChild(el('circle', { cx: mx, cy: my, r: 1.05, fill: PC[o],
+      stroke: 'rgba(20,16,10,.85)', 'stroke-width': 0.32, 'data-toll': o,
       class: hl?.kind === 'rights' ? 'pulse' : '' }));
   }
 

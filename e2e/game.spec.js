@@ -39,7 +39,10 @@ test.describe('board rendering', () => {
   test('renders all nodes and channels', async ({ page }) => {
     await boot(page);
     await expect(page.locator('[data-node]')).toHaveCount(20);
-    await expect(page.locator('line.ch')).toHaveCount(31);
+    // Match on the class, not the element type. These pinned `line.ch` and broke
+    // when channels became curved <path> ribbons — the contract is "31 channels
+    // carrying a depth", not "31 SVG lines".
+    await expect(page.locator('.ch')).toHaveCount(31);
   });
 
   test('shows the three mouths', async ({ page }) => {
@@ -51,7 +54,7 @@ test.describe('board rendering', () => {
 
   test('opens every channel at full depth', async ({ page }) => {
     await boot(page);
-    const depths = await page.locator('line.ch').evaluateAll(
+    const depths = await page.locator('.ch').evaluateAll(
       els => els.map(e => +e.dataset.depth));
     expect(depths).toHaveLength(31);
     expect(depths.every(d => d === 3)).toBe(true);
@@ -196,7 +199,9 @@ test.describe('dredging rights', () => {
     const owned = await page.evaluate(() =>
       Object.values(window.SILT.state().rights).filter(r => r !== null).length);
     expect(owned).toBeGreaterThan(0);
-    await expect(page.locator('line.ch[data-rights="0"]').first()).toBeAttached();
+    await expect(page.locator('.ch[data-rights="0"]').first()).toBeAttached();
+    // And the marker itself must be on the board, not just the data attribute.
+    await expect(page.locator('circle[data-toll="0"]').first()).toBeAttached();
   });
 
   test('pays the holder when an opponent ships through', async ({ page }) => {

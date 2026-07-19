@@ -82,6 +82,18 @@ const BG = (subject) =>
   + `no illustration, no drawing, no map, no text, no labels, no compass, `
   + `no border, no torn edges, no folds`;
 
+// Seamless surface tile. Composited under the board and stretched along channels,
+// so it must be flat-on with NO baked light source or perspective — either would
+// break the moment a tile is rotated to follow a river, and would betray the
+// illusion instantly on a printed board.
+const TILE = (subject) =>
+  `seamless tileable texture of ${subject}, painted board game illustration, `
+  + `flat overhead view straight down, no perspective, no horizon, `
+  + `even flat lighting, no shadows, no vignette, no light source, `
+  + `fills the entire frame edge to edge, uniform density across the whole image, `
+  + `no objects, no boats, no buildings, no people, no text, no border, `
+  + `warm aged parchment palette, sepia ochre umber and muted teal, subtle paper grain`;
+
 // ---------------------------------------------------------------- batches
 const BATCHES = {
   // The biggest visual win by far, and the thing that answers "why is it gloomy".
@@ -126,6 +138,39 @@ const BATCHES = {
       // chart dropped entirely — anything map-shaped invites fake lettering.
       'act-survey': ICON('flat two-tone illustration of a simple spyglass, teal and gold, '
         + 'bold simple silhouette, no map, no paper, no text, matte flat colour, not photorealistic'),
+    },
+  },
+
+  // Physical components. These are the pieces a printed edition would actually
+  // have: water segments at each depth, land, tokens. Generated as tileable art
+  // the renderer composites rather than one baked board image — a baked board
+  // cannot be clicked, and any topology change would invalidate it. Sprites stay
+  // true to graph.js AND could go to a print shop.
+  //
+  // Square, seamless, and flat-on: anything with perspective or a light source
+  // baked in cannot tile or rotate to follow a channel.
+  water: {
+    size: [512, 512],
+    prompts: {
+      // The four states a channel can be in. Depth is the core read of the whole
+      // game, so these have to differ at a glance, not on inspection.
+      'water-deep':    TILE('deep clear river water, rich teal, gentle ripples'),
+      'water-mid':     TILE('shallower river water, lighter teal green, visible ripple texture'),
+      'water-shallow': TILE('very shallow murky water over a sandy bed, pale khaki green, '
+        + 'sand showing through'),
+      'water-silted':  TILE('cracked dried mud of a dead riverbed, ochre brown, deep cracks, '
+        + 'no water at all'),
+      // The moment of silting — used for the effect overlay when a channel dies.
+      'water-choking': TILE('muddy silt-laden water, brown sediment swirling through green water'),
+    },
+  },
+
+  land: {
+    size: [512, 512],
+    prompts: {
+      'land-delta':  TILE('dry delta floodplain, warm tan earth with sparse scrub'),
+      'land-marsh':  TILE('marshy ground with reeds and grass, muted green over wet earth'),
+      'land-upland': TILE('drier upland ground, ochre earth with scattered vegetation'),
     },
   },
 

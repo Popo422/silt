@@ -278,7 +278,7 @@ test.describe('board readability', () => {
   test('shows depth on every channel', async ({ page }) => {
     await open(page);
     await page.locator('#btnPlay').click();
-    const depths = await page.locator('line.ch').evaluateAll(
+    const depths = await page.locator('.ch').evaluateAll(
       els => els.map(e => e.dataset.depth));
     expect(depths).toHaveLength(31);
     expect(depths.every(d => d !== undefined && d !== '')).toBe(true);
@@ -510,5 +510,83 @@ test.describe('effects', () => {
     await page.locator('#btnPlay').click();
     expect(await page.evaluate(() => window.SILT.fxCount())).toBe(0);
     expect(await page.evaluate(() => window.SILT.actor())).toBe(null);
+  });
+});
+
+// Channels are painted ribbons of water texture now, not coloured strokes. The
+// board previously read as a node graph — straight lines between grid-aligned
+// dots — and these lock in the things that stopped it looking like one.
+test.describe('board is a river, not a graph', () => {
+  test('paints every channel with a depth texture', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    const fills = await page.locator('.ch').evaluateAll(
+      els => els.map(e => e.getAttribute('stroke')));
+    expect(fills).toHaveLength(31);
+    // Each must reference the pattern matching its own depth.
+    const depths = await page.locator('.ch').evaluateAll(
+      els => els.map(e => e.dataset.depth));
+    for (let i = 0; i < fills.length; i++) {
+      expect(fills[i], `channel ${i} at depth ${depths[i]}`).toBe(`url(#tile${depths[i]})`);
+    }
+  });
+
+  test('defines a pattern for every depth including dead', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    for (const d of [0, 1, 2, 3]) {
+      await expect(page.locator(`#svg pattern#tile${d}`)).toBeAttached();
+    }
+  });
+
+  test('channels curve rather than running straight', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    // A straight line between two points has no control points. Every channel
+    // should be a cubic bezier — that meander is most of what stopped this
+    // looking like a network diagram.
+    const curved = await page.locator('.ch').evaluateAll(
+      els => els.filter(e => (e.getAttribute('d') || '').includes('C')).length);
+    expect(curved).toBe(31);
+  });
+
+  test('the same channel curves identically across repaints', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    const before = await page.locator('.ch').evaluateAll(
+      els => els.map(e => e.getAttribute('d')));
+    // Force a repaint by picking an action.
+    await page.locator('[data-act="survey"]').click();
+    const after = await page.locator('.ch').evaluateAll(
+      els => els.map(e => e.getAttribute('d')));
+    // Jitter is seeded off the channel key, so a river that wriggles on every
+    // render would be both ugly and nauseating.
+    expect(after).toEqual(before);
+  });
+
+  test('a dead channel is drawn as dried bed, not hidden', async ({ page }) => {
+    await open(page);
+    await page.locator('#btnPlay').click();
+    await page.evaluate(() => {
+      const g = window.SILT.state();
+      g.depth[Object.keys(g.depth)[0]] = 0;
+    });
+    await page.locator('[data-act="survey"]').click();   // repaint
+    const dead = page.locator('.ch[data-depth="0"]').first();
+    await expect(dead).toBeAttached();
+    // Silting is the whole premise; it must be visible, not merely absent.
+    expect(await dead.getAttribute('stroke')).toBe('url(#tile0)');
+    expect(Number(await dead.getAttribute('stroke-width'))).toBeGreaterThan(0.5);
+  });
+
+  test('water tiles actually load', async ({ page }) => {
+    const bad = [];
+    page.on('response', r => {
+      if (/water-|land-/.test(r.url()) && r.status() >= 400) bad.push(r.url().split('/').pop());
+    });
+    await open(page);
+    await page.locator('#btnPlay').click();
+    await page.waitForTimeout(500);
+    expect(bad, `missing tiles: ${bad.join(', ')}`).toEqual([]);
   });
 });
