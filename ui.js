@@ -88,6 +88,7 @@ function buildMenu() {
   $('btnMenu').addEventListener('click', showMenu);
   $('btnAgain').addEventListener('click', () => start(false));
   wireBook();
+  wireBoard();
 }
 
 function setTheme(id) {
@@ -253,6 +254,10 @@ function drawBoard() {
 
   // --- channels
   const tolls = [];
+  // Channel click-targets are collected and appended LAST. Drawn inline they sat
+  // beneath the node circles, which paint later and swallowed the clicks — dredge
+  // became unresolvable and the round hung.
+  const hitLayer = [];
   for (const [a, b] of CHANNELS) {
     const k = chKey(a, b), d = g.depth[k];
     const A = NODE_BY_ID[a], B = NODE_BY_ID[b];
@@ -271,10 +276,10 @@ function drawBoard() {
 
     if (dredgeable) {
       const hit = el('line', { x1: A.x, y1: A.y, x2: B.x, y2: B.y,
-        stroke: 'transparent', 'stroke-width': 5, 'data-hit': k });
+        stroke: 'transparent', 'stroke-width': 5, 'data-hit': k,
+        'pointer-events': 'stroke' });
       hit.style.cursor = 'pointer';
-      hit.addEventListener('click', () => resolveHuman({ channel: k }));
-      svg.appendChild(hit);
+      hitLayer.push(hit);
     }
     if (g.rights[k] !== null && d > 0) tolls.push([A, B, g.rights[k]]);
   }
@@ -312,10 +317,13 @@ function drawBoard() {
         : hl.ids?.includes?.(n.id)));
 
     const r = isMouth ? 4.2 : 3.3;
-    let fill = '#152329', stroke = 'var(--line2)', sw = 0.28;
-    if (isMouth) { fill = '#16303a'; stroke = '#3f6b7a'; }
-    if (own !== undefined) { stroke = PC[own]; sw = 0.62; fill = '#16272e'; }
-    if (btargets.has(n.id) || sfrom.has(n.id)) { stroke = 'var(--gold)'; sw = 0.75; fill = '#243a42'; }
+    let fill = 'var(--panel2)', stroke = 'var(--line2)', sw = 0.28;
+    if (isMouth) { fill = 'var(--panel)'; stroke = 'var(--water3)'; }
+    if (own !== undefined) { stroke = PC[own]; sw = 0.62; fill = 'var(--panel)'; }
+    if (btargets.has(n.id) || sfrom.has(n.id)) {
+      stroke = 'var(--gold)'; sw = 0.75;
+      fill = 'color-mix(in srgb, var(--panel) 70%, var(--gold) 16%)';
+    }
 
     grp.appendChild(el('circle', { cx: n.x, cy: n.y, r, fill, stroke, 'stroke-width': sw,
       class: highlighted ? 'pulse' : '' }));
@@ -357,13 +365,13 @@ function drawBoard() {
                      ...(g.inn[n.id] ?? []).map(x => chKey(x, n.id))]
       .some(k => g.depth[k] === 0);
     if (anyDead && own !== undefined) {
-      grp.appendChild(use(`#ic-${ico('dead')}`, n.x + 3.2, n.y + 2.6, 2.4, '#8a5f3a'));
+      grp.appendChild(use(`#ic-${ico('dead')}`, n.x + 3.2, n.y + 2.6, 2.4, 'var(--dead)'));
     }
 
     const label = el('text', {
       x: n.x, y: n.y + (isMouth ? 7.4 : 6.1), 'text-anchor': 'middle',
       'font-size': isMouth ? 2.5 : (nodeLabel(T, n.id).length > 7 ? 1.8 : 2.05),
-      fill: own !== undefined ? PC[own] : '#9fb0a8',
+      fill: own !== undefined ? PC[own] : 'var(--dim)',
       'font-weight': own !== undefined ? 700 : 500,
       // Halo so place names stay readable where they cross a channel.
       stroke: 'var(--bg)', 'stroke-width': 0.6, 'paint-order': 'stroke',
@@ -389,14 +397,15 @@ function drawBoard() {
       // hit area so tapping near the node still works.
       grp.appendChild(el('circle', {
         cx: n.x, cy: n.y, r: 6, fill: 'transparent', 'data-hit-node': n.id,
+        'data-hit-kind': btargets.has(n.id) ? 'build' : 'ship',
+        'pointer-events': 'fill',
       }));
-      const act = btargets.has(n.id)
-        ? () => resolveHuman({ node: n.id })
-        : () => pickShip(n.id);
-      grp.addEventListener('click', act);
     }
     svg.appendChild(grp);
   }
+
+  // Channel targets go above the nodes so a click near a channel reaches it.
+  for (const h of hitLayer) svg.appendChild(h);
 }
 
 // ---------------------------------------------------------------- panel
@@ -577,6 +586,23 @@ function step() {
     }
     flush();
   }
+}
+
+// Board clicks are delegated from the <svg> itself rather than bound to each
+// element. drawBoard() rebuilds the whole SVG on every render, so per-element
+// handlers were being destroyed between the pointerdown and the click — a real
+// click could land on a detached node and silently do nothing, which hung the
+// game mid-round. One listener on a parent that never gets replaced fixes it.
+function wireBoard() {
+  $('svg').addEventListener('click', (e) => {
+    if (!pendingAction) return;
+    const t = e.target.closest?.('[data-hit], [data-hit-node]');
+    if (!t) return;
+    if (t.dataset.hit) { resolveHuman({ channel: t.dataset.hit }); return; }
+    const id = t.dataset.hitNode;
+    if (t.dataset.hitKind === 'build') resolveHuman({ node: id });
+    else pickShip(id);
+  });
 }
 
 function resolveHuman(choice) {

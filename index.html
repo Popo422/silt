@@ -8,12 +8,12 @@
 <title>ANOD — a river delta game</title>
 <style>
   :root{
-    --bg:#0b1316; --panel:#111d21; --panel2:#0c1619; --line:#1e3238; --line2:#2a464f;
-    --ink:#e4eef0; --dim:#7e969c; --dim2:#5d757b;
-    --water3:#2f7d9e; --water2:#2b5f75; --water1:#4a5a55; --dead:#3a2818;
-    --gold:#e0a458;
-    --p0:#e0a458; --p1:#7fb2d9; --p2:#8fce7a; --p3:#d97f9e;
-    --timber:#c07f43; --grain:#d9c765; --salt:#a9dfe6;
+    --bg:#232e28; --panel:#2b3830; --panel2:#26322b; --line:#3e5046; --line2:#57705f;
+    --ink:#f4f1e8; --dim:#bcc8bb; --dim2:#93a394;
+    --water3:#5fb3a8; --water2:#6f9a7e; --water1:#a99a5e; --dead:#6b4a2c;
+    --gold:#f2c56f;
+    --p0:#f2c56f; --p1:#79c6d6; --p2:#a8d97a; --p3:#e89a86;
+    --timber:#b6d47f; --grain:#f0d97a; --salt:#d8ecea;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -22,7 +22,7 @@
 
   /* ---------- menu ---------- */
   #menu{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
-    background:radial-gradient(1200px 700px at 50% 25%,#16282e 0%,#0b1316 70%)}
+    background:radial-gradient(1200px 700px at 50% 25%,color-mix(in srgb,var(--panel) 70%,var(--gold) 6%) 0%,var(--bg) 72%)}
   #menu.hide{display:none}
   .menuCard{width:min(680px,92vw);max-height:92vh;overflow-y:auto;padding:26px 38px}
   .brand{display:flex;align-items:center;gap:16px;margin-bottom:6px}
@@ -37,27 +37,27 @@
   .opt{flex:1;min-width:86px;padding:9px 8px;border:1px solid var(--line);border-radius:7px;
     background:var(--panel2);cursor:pointer;text-align:center;transition:.13s;color:var(--ink);
     font:inherit}
-  .opt:hover{border-color:var(--line2);background:#132227}
-  .opt.on{border-color:var(--gold);background:#20323a;box-shadow:inset 0 0 0 1px rgba(224,164,88,.25)}
+  .opt:hover{border-color:var(--line2);background:color-mix(in srgb,var(--panel) 80%,var(--ink) 6%)}
+  .opt.on{border-color:var(--gold);background:color-mix(in srgb,var(--panel) 70%,var(--gold) 14%);box-shadow:inset 0 0 0 1px rgba(224,164,88,.25)}
   .opt .k{font-weight:600;font-size:14px}
   .opt .v{font-size:11px;color:var(--dim);margin-top:3px;line-height:1.35}
   .botRow{display:flex;align-items:center;gap:10px;padding:6px 10px;border:1px solid var(--line);
     border-radius:7px;background:var(--panel2);margin-bottom:6px}
   .botRow .dot{width:11px;height:11px;border-radius:50%;flex:none}
   .botRow .nm{width:58px;color:var(--dim);font-size:12px}
-  .botRow select{flex:1;background:#0a1417;color:var(--ink);border:1px solid var(--line);
+  .botRow select{flex:1;background:var(--panel2);color:var(--ink);border:1px solid var(--line);
     border-radius:5px;padding:6px 8px;font:inherit;cursor:pointer}
   .botRow select:focus{outline:none;border-color:var(--gold)}
   .botRow .desc{font-size:11px;color:var(--dim2);width:150px;text-align:right;line-height:1.3}
   .go{display:flex;gap:10px;margin-top:18px}
   .btnBig{flex:1;padding:13px;border-radius:8px;border:1px solid var(--gold);background:var(--gold);
-    color:#0b1316;font:inherit;font-weight:700;font-size:15px;cursor:pointer;letter-spacing:.04em;
+    color:var(--bg);font:inherit;font-weight:700;font-size:15px;cursor:pointer;letter-spacing:.04em;
     transition:.13s}
   .btnBig:hover{filter:brightness(1.08)}
   .btnGhost{flex:1;padding:13px;border-radius:8px;border:1px solid var(--line2);
     background:transparent;color:var(--ink);font:inherit;font-weight:600;font-size:15px;
     cursor:pointer;transition:.13s}
-  .btnGhost:hover{background:#152429;border-color:var(--gold);color:var(--gold)}
+  .btnGhost:hover{background:color-mix(in srgb,var(--panel) 80%,var(--ink) 6%);border-color:var(--gold);color:var(--gold)}
   .btnNarrow{flex:0 0 auto;padding-left:20px;padding-right:20px}
   #gloss{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
   #gloss summary{cursor:pointer;color:var(--dim);font-size:12px;letter-spacing:.06em;
@@ -131,7 +131,7 @@
   .slot{flex:1;height:56px;border:1px dashed var(--line2);border-radius:7px;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
     cursor:pointer;background:var(--panel2);transition:.13s}
-  .slot.on{border-style:solid;border-color:var(--gold);background:#1a2b33}
+  .slot.on{border-style:solid;border-color:var(--gold);background:color-mix(in srgb,var(--panel) 70%,var(--gold) 12%)}
   .slot.filled{border-style:solid;border-color:var(--line2)}
   .slot svg{width:19px;height:19px;color:var(--gold)}
   .slot .n{font-size:9px;color:var(--dim2);letter-spacing:.12em}
@@ -139,9 +139,9 @@
   .slot .g{font-size:9px;color:var(--dim2);text-transform:lowercase;margin-top:-1px}
   .acts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
   .act{display:flex;gap:8px;align-items:flex-start;padding:9px;border-radius:6px;
-    border:1px solid var(--line);background:#152329;color:var(--ink);font:inherit;
+    border:1px solid var(--line);background:var(--panel2);color:var(--ink);font:inherit;
     cursor:pointer;text-align:left;transition:.13s}
-  .act:hover:not(:disabled){background:#1c2f36;border-color:var(--line2)}
+  .act:hover:not(:disabled){background:color-mix(in srgb,var(--panel) 75%,var(--ink) 8%);border-color:var(--line2)}
   .act:disabled{opacity:.35;cursor:not-allowed}
   .act svg{width:17px;height:17px;color:var(--gold);flex:none;margin-top:1px}
   .act .txt{display:flex;flex-direction:column;min-width:0}
@@ -150,12 +150,12 @@
     text-transform:lowercase;margin-left:5px}
   .act .d{font-size:10px;color:var(--dim);margin-top:3px;line-height:1.35}
   #go{width:100%;margin-top:9px;padding:11px;border-radius:6px;border:1px solid var(--gold);
-    background:var(--gold);color:#0b1316;font:inherit;font-weight:700;cursor:pointer;
+    background:var(--gold);color:var(--bg);font:inherit;font-weight:700;cursor:pointer;
     letter-spacing:.03em}
-  #go:disabled{background:#152329;color:var(--dim2);border-color:var(--line);cursor:not-allowed}
-  .prompt{background:#1d3038;border:1px solid var(--gold);border-radius:6px;padding:9px 10px;
+  #go:disabled{background:var(--panel2);color:var(--dim2);border-color:var(--line);cursor:not-allowed}
+  .prompt{background:color-mix(in srgb,var(--panel) 70%,var(--gold) 12%);border:1px solid var(--gold);border-radius:6px;padding:9px 10px;
     font-size:12px;margin-bottom:9px;color:var(--ink);line-height:1.4}
-  .ct{font-size:12px;padding:5px 0;border-bottom:1px solid #16262b;color:var(--dim);
+  .ct{font-size:12px;padding:5px 0;border-bottom:1px solid var(--line);color:var(--dim);
     display:flex;gap:7px;align-items:baseline}
   .ct:last-child{border-bottom:none}
   .ct .vp{color:var(--gold);font-weight:700;flex:none;font-variant-numeric:tabular-nums}
@@ -169,7 +169,7 @@
     vertical-align:middle}
 
   /* ---------- overlays ---------- */
-  #ov{position:absolute;inset:0;background:rgba(8,14,16,.95);display:none;
+  #ov{position:absolute;inset:0;background:color-mix(in srgb,var(--bg) 94%,transparent);display:none;
     align-items:center;justify-content:center;z-index:20}
   #ov.on{display:flex}
   .card{background:var(--panel);border:1px solid var(--line2);border-radius:10px;
@@ -193,7 +193,7 @@
   #tut .row{display:flex;gap:8px;align-items:center}
   #tut button{padding:8px 14px;border-radius:6px;font:inherit;font-size:12px;cursor:pointer;
     font-weight:600}
-  #tutNext{background:var(--gold);border:1px solid var(--gold);color:#0b1316}
+  #tutNext{background:var(--gold);border:1px solid var(--gold);color:var(--bg)}
   #tutSkip,#tutSkipStep{background:transparent;border:1px solid var(--line2);color:var(--dim)}
   #tutSkipStep:hover,#tutSkip:hover{color:var(--ink);border-color:var(--gold)}
   #tutSkip:hover{color:var(--ink)}
@@ -202,7 +202,7 @@
 
 
   /* ---------- rulebook ---------- */
-  #book{position:fixed;inset:0;background:rgba(6,11,9,.96);display:none;
+  #book{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 96%,transparent);display:none;
     align-items:center;justify-content:center;z-index:80;padding:20px}
   #book.on{display:flex}
   .bookCard{background:var(--panel);border:1px solid var(--line2);border-radius:12px;
@@ -217,7 +217,7 @@
     color:var(--ink)}
   .bookBody p{margin:0 0 12px;color:var(--dim)}
   .bookBody p b,.bookBody li b,.bookBody dd b{color:var(--ink)}
-  .bookBody p.warn{color:var(--ink);background:#2a1f14;border-left:2px solid var(--gold);
+  .bookBody p.warn{color:var(--ink);background:color-mix(in srgb,var(--panel) 70%,var(--gold) 14%);border-left:2px solid var(--gold);
     padding:9px 12px;border-radius:0 5px 5px 0}
   .bookBody p.tip{color:var(--dim);border-left:2px solid var(--line2);padding:2px 0 2px 12px}
   .bookBody ol,.bookBody ul{margin:0 0 12px;padding-left:20px;color:var(--dim)}
@@ -226,7 +226,7 @@
   .bookBody dl.acts dt{color:var(--gold);font-weight:600;white-space:nowrap}
   .bookBody dl.acts dt em{display:block;font-style:normal;font-weight:400;font-size:10px;
     color:var(--dim2);text-transform:lowercase}
-  .bookBody dl.acts dt.neg{color:#d98a72}
+  .bookBody dl.acts dt.neg{color:var(--p3)}
   .bookBody dl.acts dd{margin:0;color:var(--dim)}
   table.depth{border-collapse:collapse;margin:0 0 12px;font-size:13px}
   table.depth td{padding:4px 10px 4px 0;border:none;text-align:left;color:var(--dim)}
@@ -236,7 +236,7 @@
   table.depth i.d0{background:var(--dead);outline:1px dashed #6b4a2c}
   .bookFoot{display:flex;align-items:center;gap:12px;padding:13px 24px;
     border-top:1px solid var(--line)}
-  .pageBtn{background:#152329;border:1px solid var(--line2);color:var(--ink);
+  .pageBtn{background:var(--panel2);border:1px solid var(--line2);color:var(--ink);
     border-radius:6px;padding:9px 15px;font:inherit;font-size:13px;cursor:pointer;
     font-weight:600}
   .pageBtn:hover:not(:disabled){border-color:var(--gold);color:var(--gold)}
