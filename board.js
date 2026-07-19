@@ -317,7 +317,7 @@ export function drawBoard(ctx) {
     let stroke = 'var(--line2)', sw = 0.28;
     if (isMouth) { fill = 'color-mix(in srgb, #3c4442 82%, transparent)'; stroke = 'var(--water3)'; }
     if (own !== undefined) {
-      stroke = PC[own]; sw = 0.62;
+      stroke = PC[own]; sw = own === HUMAN ? 0.85 : 0.62;
       // Tint an owned node toward its owner rather than filling it flat — the ring
       // alone was easy to miss on a busy board.
       fill = `color-mix(in srgb, #4a4130 72%, ${PC[own]} 14%)`;
@@ -336,11 +336,34 @@ export function drawBoard(ctx) {
     grp.appendChild(el('circle', { cx: n.x, cy: n.y, r, fill, stroke, 'stroke-width': sw,
       class: highlighted ? 'pulse' : '' }));
 
-    // station or lighthouse art
+    // The player's piece.
+    //
+    // This is a game meant to port to a physical edition, so ownership is shown
+    // the way a table would show it: a piece in your colour, sitting on the
+    // space. It replaces a ring-colour-only signal that meant you had to
+    // remember your seat colour and that failed outright for a colourblind
+    // player — and an "own settlement" rim I drew at r-0.75, which the station
+    // art then painted straight over. That rim passed a DOM check for existing
+    // while being invisible on screen, which is why this is a shape now and not
+    // another stroke.
+    //
+    // Traced from a generated silhouette (see gen-assets.mjs, batch `pieces`)
+    // rather than painted, so it takes the owner's colour at runtime and keeps a
+    // hard edge at the ~40px it actually renders at.
     if (isMouth) {
       grp.appendChild(use(`#ic-${ico('mouth')}`, n.x, n.y - 0.2, 4.4, 'var(--salt)'));
     } else if (own !== undefined) {
-      grp.appendChild(use(`#ic-${ico('station')}`, n.x, n.y - 0.1, 3.9, PC[own]));
+      // Dark plinth: the piece reads as standing ON the node rather than being
+      // painted into it, and it holds the silhouette against a busy board.
+      grp.appendChild(el('ellipse', { cx: n.x, cy: n.y + 2.0, rx: 2.5, ry: 0.75,
+        fill: 'rgba(20,16,10,.5)' }));
+      // Every player's piece is the same object, as it would be on a table.
+      // Yours is outlined so you can find yourself at a glance — done with a
+      // stroke under the fill (paint-order) rather than a larger copy drawn
+      // behind, which the node body simply hid.
+      const piece = use('#ic-piece', n.x, n.y - 0.15, 5.0, PC[own],
+        own === HUMAN ? 'ownPiece' : '');
+      grp.appendChild(piece);
     }
 
     // Goods: one legible badge instead of a scatter of 1.9-unit icons. Counting

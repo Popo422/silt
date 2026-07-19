@@ -447,3 +447,66 @@ test.describe('opponent programs are visible', () => {
     expect(tip).toContain(survey);
   });
 });
+
+// The final score table is the last thing every player sees, and its columns
+// used to be four-letter truncations — "Barâ", "Lupà", "Kasund" — with no
+// explanation anywhere on the screen. One of them is negative and never said so.
+test.describe('the final score explains itself', () => {
+  const playOut = async (page) => {
+    await page.goto('/index.html');
+    await page.evaluate(() => window.SILT.ready);
+    await page.evaluate(() => { window.SILT.setSpeed('off'); window.SILT.setTheme('silt'); });
+    await page.evaluate(() => window.SILT.boot(3));
+    for (let r = 0; r < 12; r++) {
+      if (await page.locator('#ov').evaluate(e => e.classList.contains('on'))) break;
+      await page.evaluate(() => window.SILT.program('survey', 'survey'));
+      await page.evaluate(() => window.SILT.commit());
+    }
+    await expect(page.locator('#ov')).toHaveClass(/on/);
+  };
+
+  test('every scoring column says where its number came from', async ({ page }) => {
+    await playOut(page);
+    // Player and Total are self-evident; the six scoring columns are not.
+    await expect(page.locator('#final th.hasTip')).toHaveCount(6);
+    for (const th of await page.locator('#final th.hasTip').all()) {
+      expect((await th.getAttribute('data-tip'))?.length ?? 0).toBeGreaterThan(20);
+    }
+  });
+
+  test('the penalty column warns that it is negative', async ({ page }) => {
+    await playOut(page);
+    const tips = await page.locator('#final th.hasTip')
+      .evaluateAll(ths => ths.map(t => t.getAttribute('data-tip')));
+    expect(tips.some(t => /negative/i.test(t))).toBe(true);
+  });
+});
+
+// Ownership used to be ring COLOUR alone: you had to remember your seat colour,
+// and a colourblind player could not tell their settlements from an opponent's
+// at all. Now each settlement carries a piece, and yours is outlined.
+test.describe('you can find your own pieces', () => {
+  const start = async (page) => {
+    await page.goto('/index.html');
+    await page.evaluate(() => window.SILT.ready);
+    await page.evaluate(() => { window.SILT.setSpeed('off'); window.SILT.setTheme('silt'); });
+    await page.evaluate(() => window.SILT.boot(3));
+  };
+
+  test('every settlement shows a piece in its owner colour', async ({ page }) => {
+    await start(page);
+    const pieces = page.locator('use[href="#ic-piece"]');
+    await expect(pieces).toHaveCount(3);          // one per player at setup
+    const colours = await pieces.evaluateAll(us => us.map(u => u.style.color));
+    expect(new Set(colours).size, 'each player needs a distinct colour').toBe(3);
+  });
+
+  test('your own piece is marked by more than colour', async ({ page }) => {
+    await start(page);
+    const mine = page.locator('use.ownPiece');
+    await expect(mine, 'exactly one piece is yours').toHaveCount(1);
+    // A stroke, not a hue: this is what survives colourblindness.
+    const stroke = await mine.evaluate(e => getComputedStyle(e).strokeWidth);
+    expect(parseFloat(stroke)).toBeGreaterThan(0);
+  });
+});

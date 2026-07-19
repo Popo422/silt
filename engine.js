@@ -426,11 +426,19 @@ export function siltPhase(g) {
 // board can't go globally dry mid-game (observed dead round at R5 pre-fix).
 export function regrowPhase(g) {
   // Your stations work their node: a developed site keeps producing.
+  //
+  // This phase used to be entirely silent — every other phase logs, this one
+  // changed the goods on the board and said nothing. Watching a node's badge
+  // climb between rounds with no line explaining it is how a player concludes
+  // the numbers are arbitrary.
+  let produced = 0;
   if (TUNING.stationYield > 0) {
     for (const p of g.players) {
       for (const s of p.stations) {
         if (g.cubes[s] < TUNING.cubesPerNode) {
+          const before = g.cubes[s];
           g.cubes[s] = Math.min(TUNING.cubesPerNode, g.cubes[s] + TUNING.stationYield);
+          produced += g.cubes[s] - before;
         }
       }
     }
@@ -440,9 +448,13 @@ export function regrowPhase(g) {
   const pool = NODES.filter(n => !MOUTHS.includes(n.id) && !owned.has(n.id)
     && g.cubes[n.id] < TUNING.cubesPerNode)
     .sort((a, b) => g.cubes[a.id] - g.cubes[b.id]);
+  let wild = 0;
   for (let i = 0; i < TUNING.regrowPerRound && i < pool.length; i++) {
     g.cubes[pool[i].id] += 1;
+    wild += 1;
   }
+  if (produced) g.log.push(`Settlements produce ${produced} goods`);
+  if (wild) g.log.push(`${wild} goods regrow on unclaimed land`);
 }
 
 export function upkeepPhase(g) {

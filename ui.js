@@ -15,6 +15,7 @@ import { createSpeech } from './speech.js';
 import { drawBoard as paintBoard, el, insetRadius } from './board.js';
 import {
   renderContracts, renderPlayers, renderActions, renderSlots, renderAimHint,
+  renderFinalScore,
   actionDescriptions, actionTips,
 } from './panel.js';
 
@@ -795,17 +796,9 @@ async function endRound() {
 
 function finish() {
   const s = score(g).map((x, i) => ({ ...x, i }));
-  const best = Math.max(...s.map(x => x.total));
-  $('final').innerHTML = `<table>
-    <tr><th>${T.terms.player.name}</th><th>${T.id === 'anod' ? 'Kasund' : 'Contr'}</th>
-        <th>${T.terms.mouth.name}</th><th>${T.id === 'anod' ? 'Lupà' : 'Net'}</th>
-        <th>${T.terms.toll.name}</th><th>${T.terms.coins.name}</th>
-        <th>${T.terms.silted.name}</th><th>${T.id === 'anod' ? 'Kabuoán' : 'Total'}</th></tr>
-    ${s.map(x => `<tr class="${x.total === best ? 'win' : ''}">
-      <td>${g.players[x.i].name}</td><td>${x.contracts}</td><td>${x.mouth}</td>
-      <td>${x.network}</td><td>${x.held}</td><td>${x.coin}</td><td>${x.silt}</td>
-      <td>${x.total}</td></tr>`).join('')}
-  </table>`;
+  renderFinalScore({
+    el: $, rows: s, players: g.players, T, tuning: TUNING, esc,
+  });
   $('ov').classList.add('on');
   $('ph').textContent = T.id === 'anod' ? 'Tapós na' : 'Game over';
   tut?.stop();

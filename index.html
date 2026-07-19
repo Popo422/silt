@@ -631,6 +631,12 @@
      animated drop-shadow read as ambient lighting rather than "click this" —
      first-time players missed it entirely. Brightness and scale carry the signal
      now; the glow is just support. */
+  /* Your own piece. Same shape as everyone else's — it is the same physical
+     object on a table — outlined so you can find yourself without having to
+     remember which colour you were. paint-order puts the stroke UNDER the fill
+     so it reads as a rim, not a thickened silhouette. */
+  .ownPiece{stroke:rgba(255,248,230,.95);stroke-width:26;paint-order:stroke;
+    stroke-linejoin:round}
   .pulse{animation:pulse 1.25s ease-in-out infinite;transform-box:fill-box;
     transform-origin:center}
   @keyframes pulse{

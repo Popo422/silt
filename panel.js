@@ -209,3 +209,43 @@ export function renderAimHint({ el, pendingAction, T }) {
   hint.querySelector('.aimTxt').textContent =
     (AIM_HINTS[T.id] ?? AIM_HINTS.plain)[pendingAction] ?? '';
 }
+
+// The final score table.
+//
+// Every column carries an explanation of where its number came from. They used
+// to be four-letter truncations with none — "Barâ", "Lupà", "Kasund" — on the
+// one screen every single player reaches, and the rulebook page that defines
+// them sits behind a button nobody has a reason to press once the game is over.
+// One column is negative and never said so.
+export function renderFinalScore({ el, rows, players, T, tuning, esc }) {
+  const best = Math.max(...rows.map(x => x.total));
+  const anod = T.id === 'anod';
+  const cols = [
+    [T.terms.player.name, '', ''],
+    [anod ? 'Kasund' : 'Contracts', 'Contracts filled',
+      'Goods delivered to the bay a contract named. Usually most of the score.'],
+    [T.terms.mouth.name, 'Bay majorities',
+      `Each bay is scored separately: ${tuning.mouthVP.join(' / ')} points for `
+      + 'first, second and third by goods delivered there. Ties share.'],
+    [anod ? 'Lupà' : 'Network', 'Live network',
+      'Settlements that can still reach the sea at the end. A settlement cut off '
+      + 'by dead water scores nothing.'],
+    [T.terms.toll.name, 'Channels you own',
+      `${tuning.rightsVP} points for each channel you dredged that is still deep `
+      + 'at the end.'],
+    [T.terms.coins.name, 'Leftover gold', 'Unspent gold, converted at the end.'],
+    [T.terms.silted.name, 'Dead water penalty',
+      `You LOSE ${tuning.siltedPenaltyVP} point for every dead channel touching `
+      + 'one of your settlements — this column is negative.'],
+    [anod ? 'Kabuoán' : 'Total', 'Final score', ''],
+  ];
+  el('final').innerHTML = `<table>
+    <tr>${cols.map(([label, title, tip]) => (tip
+      ? `<th class="hasTip" data-tip-title="${esc(title)}" data-tip="${esc(tip)}">${label}</th>`
+      : `<th>${label}</th>`)).join('')}</tr>
+    ${rows.map(x => `<tr class="${x.total === best ? 'win' : ''}">
+      <td>${esc(players[x.i].name)}</td><td>${x.contracts}</td><td>${x.mouth}</td>
+      <td>${x.network}</td><td>${x.held}</td><td>${x.coin}</td><td>${x.silt}</td>
+      <td>${x.total}</td></tr>`).join('')}
+  </table>`;
+}

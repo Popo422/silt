@@ -2,7 +2,7 @@
 
 A river-delta euro board game. 2–4 players, ~60–75 min.
 
-**The pitch:** your shipping lanes are also the thing your shipping destroys. Every cube you move down a channel silts it one step closer to dead. The delta stays navigable only if players collectively pay to dredge it — and any player who defects to pure profit rides free on everyone else's maintenance.
+**The pitch:** your shipping lanes are also the thing your shipping destroys. Every good you move down a channel silts it one step closer to dead. The delta stays navigable only if players collectively pay to dredge it — and any player who defects to pure profit rides free on everyone else's maintenance.
 
 No hidden information. No take-that cards. You lose because you misread the board, not because someone ambushed you.
 
@@ -35,14 +35,30 @@ explains itself.
 
 ## The rules
 
+### What things are called
+
+The code and the interface do not use the same words, which is worth knowing
+before reading either. The right-hand column is what a player actually sees.
+
+| In the code | On screen | What it is |
+|---|---|---|
+| `cubes` | goods | Timber, grain or salt sitting on a node |
+| `station` | settlement | A site you own, which produces goods each round |
+| `mouth` | bay | Where the river meets the sea. Goods score here |
+| `rights` | claim / toll | Dredge a channel and you own it; others pay to pass |
+| `depth` | depth | 3 → 2 → 1 → dead. Dead is permanent |
+
+There are no physical cubes — the word is board-game shorthand for a unit of
+goods and it survives only in variable names.
+
 ### Round structure
 
 1. **Program** — choose 2 of the 4 actions, in order. Everyone simultaneously.
 2. **Reveal** — all programs flip. Locked, no aborts.
 3. **Resolve slot 1** in seat order, then **slot 2**.
 4. **Silt** — every channel that carried cargo this round drops 1 depth. Max 1 per channel per round.
-5. **Regrow** — the emptiest node gains a cube back.
-6. **Upkeep** — pay 1c per station beyond your first 4.
+5. **Regrow** — settlements produce, and the emptiest unclaimed node recovers one good.
+6. **Upkeep** — pay 1 gold per settlement beyond your first 4. Cannot pay? You abandon one.
 
 Eight rounds.
 
@@ -50,22 +66,24 @@ Eight rounds.
 
 | Action | Effect |
 |---|---|
-| **Dredge** | +1 depth to one channel. Costs 1c. Cannot revive a SILTED channel. |
-| **Build** | Station on an empty adjacent node. Costs 1c + 1 per station owned. Arrives with 2 cubes. |
-| **Ship** | Move ≤2 cubes from one of your stations to a mouth. Pays 2c/cube + 1c/channel crossed. |
-| **Survey** | +3c, draw 3 contracts keep 1. |
+| **Dredge** | +1 depth to one channel. Costs 1 gold, and claims it — others then pay you a toll to pass. Cannot revive a dead channel. |
+| **Build** | Settlement on an empty adjacent node. Costs 1 gold + 1 per settlement owned. Arrives with 2 goods. |
+| **Ship** | Move ≤2 goods from one of your settlements to a bay. Pays 2 gold/good + 1 per channel crossed. |
+| **Survey** | +3 gold, draw 3 contracts keep 1. |
 
 Channels run 3 → 2 → 1 → **SILTED**. Depth 1 is still navigable; SILTED is gone permanently.
 
 ### Scoring
 
-- **Contracts** — 5 / 9 / 15 VP (local / regional / delta)
-- **Mouth majority** — 8 / 4 / 1 VP per mouth, ties shared
-- **Live network** — 2 VP per station still reaching the sea at depth ≥2
+- **Contracts** — 10 / 18 / 30 VP (local / regional / delta). The deck stores
+  5/9/15 and `TUNING.contractScale` doubles them; the UI shows the doubled value,
+  so that is the number quoted here.
+- **Bay majority** — 12 / 6 / 2 VP per bay by goods delivered, ties shared
+- **Live network** — 2 VP per settlement still reaching the sea at depth ≥2
 - **Coins** — 1 VP per 5
-- **Silt penalty** — −1 VP per dead channel touching your stations
+- **Silt penalty** — −1 VP per dead channel touching your settlements
 
-Stations score **nothing** on their own. Only working routes count.
+Settlements score **nothing** on their own. Only working routes count.
 
 ---
 
@@ -75,7 +93,7 @@ Stations score **nothing** on their own. Only working routes count.
 
 | File | What it is |
 |---|---|
-| `graph.js` | Delta topology — 20 nodes, 31 channels, 3 mouths |
+| `graph.js` | Delta topology — 20 nodes, 31 channels, 3 bays |
 | `engine.js` | Pure rules engine. All tuning constants live in `TUNING` |
 | `ai.js` | Six bot archetypes used to stress the balance |
 
@@ -133,7 +151,7 @@ The bot archetypes exist to answer specific balance questions:
 - **defector** never dredges → is freeloading on the commons profitable?
 - **steward** over-maintains → is maintenance a sucker's bet?
 - **expander** builds relentlessly → is escalating build cost a real brake?
-- **turtle** sits on 3 stations near a mouth → can you win by ignoring the map?
+- **turtle** sits on 3 settlements near a bay → can you win by ignoring the map?
 
 Current results (400 games each, competent fields): heads-up is 51/49, the 4-way mirror sits at 26%, and `defector` collapses to 0.8–6% — freeloading loses. `expander` only dominates when its opponents are deliberately crippled bots.
 
@@ -148,7 +166,7 @@ Measured over 400 games per field, both seat orders:
 | 4p mixed | ~25 each | ~40 |
 
 Contracts are 37–46% of a winning score, ~9 of 31 channels silt per game, and
-about 55% of stations still reach the sea at the end.
+about 55% of settlements still reach the sea at the end.
 
 **Dredging Rights** is what made maintenance a real strategy: dredging claims the
 channel, others pay a toll to ship through it, and channels you still hold at
@@ -156,7 +174,7 @@ depth 2+ score at game end. Without it every archetype converged on the same lin
 
 Rejected after measurement, kept as `TUNING` flags so the results are reproducible:
 
-- `siltDownstream` — severs the delta; 0% of stations end up live
+- `siltDownstream` — severs the delta; 0% of settlements end up live
 - `siltPerShip: 2` — hits the silt target but collapses scores to 17
 - snake resolution order — no measurable effect on seat balance
 

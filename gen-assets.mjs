@@ -50,6 +50,22 @@ const STYLE = [
 const NEG = 'photograph, 3d render, glossy, neon, text, letters, words, writing, label, '
   + 'watermark, signature, ui, frame, border, compass rose, cartouche';
 
+// Silhouette brief for player pieces. Note it does NOT append STYLE: everything
+// that makes the other batches look good here — parchment grain, warm palette,
+// painterly edges — is noise when the output is going to be traced into a vector
+// path. What we want is one solid black shape on white with a hard edge.
+const PIECE = (subject) =>
+  `solid black silhouette of ${subject}, `
+  + 'pure black shape on a pure white background, no other colours, '
+  + 'completely filled in, no outline, no line art, no shading, no gradient, '
+  + 'no texture, no detail inside the shape, '
+  + 'symmetrical, centred, fills the frame with a small even margin, '
+  + 'crisp hard edges, high contrast, like a stencil or a logo';
+
+const PIECE_NEG = 'colour, color, grey, gray, gradient, shading, shadow, texture, '
+  + 'grain, outline, line art, sketch, photograph, 3d, perspective, background '
+  + 'scenery, multiple objects, text, watermark, frame, border';
+
 // A tight icon brief.
 //
 // "generous empty margin" in the first pass backfired badly: FLUX centred the
@@ -108,6 +124,39 @@ const BATCHES = {
       'paper-linen':  BG('handmade laid paper with visible linen fiber grain, subtle tone variation'),
       'paper-washed': BG('aged paper with soft irregular water staining and faint tonal blotches'),
       'paper-tan':    BG('warm tan kraft paper, fine even grain, slightly darker than cream'),
+    },
+  },
+
+  // Player pieces, generated as SILHOUETTES to be traced into an SVG path.
+  //
+  // Deliberately not painted art. A piece has to take the owner's colour at
+  // runtime and stay readable at about 40px, and a baked-in PNG fails both: one
+  // file per seat colour, and painted detail turns to mush at board scale — the
+  // same reason ART excludes board markers.
+  //
+  // So the brief is inverted from every other batch here: pure black on pure
+  // white, no shading, no texture, no palette. What we want from the model is
+  // the SHAPE — the thing a manufacturer would cut from wood — and a hard
+  // two-tone image is what traces cleanly into a single path.
+  //
+  // This is a game meant to port to a physical edition, so the shape should look
+  // like a piece you could hold, not an icon.
+  pieces: {
+    size: [768, 768],
+    neg: PIECE_NEG,
+    prompts: {
+      'piece-meeple': PIECE('a standing human figure game token, rounded head, '
+        + 'simple body, the classic wooden board game meeple silhouette'),
+      'piece-hut':    PIECE('a small stilt house with a peaked roof, seen from the '
+        + 'front, a wooden board game building token'),
+      'piece-boat':   PIECE('a small outrigger canoe with a single curved sail, '
+        + 'seen from the side, a wooden board game token'),
+      'piece-tower':  PIECE('a squat round watchtower with a flag on top, seen from '
+        + 'the front, a wooden board game token'),
+      'piece-post':   PIECE('a trading post: a peaked roof on four posts with a '
+        + 'banner, seen from the front, a wooden board game token'),
+      'piece-prow':   PIECE('a carved boat prow ornament curving upward, '
+        + 'Southeast Asian style, a wooden board game token'),
     },
   },
 
@@ -231,13 +280,13 @@ fs.mkdirSync(OUT, { recursive: true });
 
 // One image. Retries on 429/5xx: the free-ish tiers rate limit hard and a whole
 // batch failing because of one blip is a waste of both money and patience.
-async function generate(prompt, w, h, seed, tries = 3) {
+async function generate(prompt, w, h, seed, tries = 3, neg = NEG) {
   for (let t = 0; t < tries; t++) {
     const res = await fetch('https://api.together.xyz/v1/images/generations', {
       method: 'POST',
       headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: model.id, prompt, negative_prompt: NEG,
+        model: model.id, prompt, negative_prompt: neg,
         width: w, height: h, steps: model.steps, n: 1, seed,
       }),
     });
@@ -277,7 +326,7 @@ for (const name of want) {
       const file = path.join(dir, variations > 1 ? `${key}-${v + 1}.png` : `${key}.png`);
       process.stdout.write(`  ${path.basename(file).padEnd(26)}`);
       try {
-        const buf = await generate(prompt, w, h, seed);
+        const buf = await generate(prompt, w, h, seed, 3, batch.neg ?? NEG);
         fs.writeFileSync(file, buf);
         console.log(`ok  ${(buf.length / 1024).toFixed(0)}kb`);
         made++;
