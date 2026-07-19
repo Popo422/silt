@@ -495,19 +495,20 @@ test.describe('you can find your own pieces', () => {
 
   test('every settlement shows a piece in its owner colour', async ({ page }) => {
     await start(page);
-    const pieces = page.locator('use[href="#ic-piece"]');
+    const pieces = page.locator('image[href*="piece-p"]');
     await expect(pieces).toHaveCount(3);          // one per player at setup
-    const colours = await pieces.evaluateAll(us => us.map(u => u.style.color));
-    expect(new Set(colours).size, 'each player needs a distinct colour').toBe(3);
+    // A distinct painted file per seat, not one sprite tinted four ways.
+    const srcs = await pieces.evaluateAll(els => els.map(e => e.getAttribute('href')));
+    expect(new Set(srcs).size, 'each player needs a distinct piece').toBe(3);
   });
 
-  test('your own piece is marked by more than colour', async ({ page }) => {
+  test('your own settlement is marked by more than colour', async ({ page }) => {
     await start(page);
-    const mine = page.locator('use.ownPiece');
-    await expect(mine, 'exactly one piece is yours').toHaveCount(1);
-    // A stroke, not a hue: this is what survives colourblindness.
-    const stroke = await mine.evaluate(e => getComputedStyle(e).strokeWidth);
-    expect(parseFloat(stroke)).toBeGreaterThan(0);
+    // A dashed ring around the node, drawn under the art so nothing covers it.
+    // Colour alone fails for a colourblind player, and a CSS stroke cannot mark
+    // an <image> the way it marked the old vector piece.
+    const ring = page.locator('circle[stroke-dasharray]');
+    await expect(ring, 'exactly one settlement is yours').toHaveCount(1);
   });
 });
 

@@ -65,17 +65,41 @@ const NEG = 'photograph, 3d render, glossy, neon, text, letters, words, writing,
 // Bold and simple is a hard requirement, not a style note. This renders at about
 // 41px on the board, where anything finer than a thick shape turns to mush.
 const TOKEN = (colourName) =>
-  `a carved wooden board game piece shaped like a small stilt house with a wide `
-  + `peaked roof, painted in ${colourName}, `
-  + `bold simple chunky form, thick heavy shapes, no thin parts, no fine detail, `
-  + `strong readable silhouette, symmetrical, seen straight from the front, `
+  `a carved wooden board game piece of a bahay kubo, a traditional Filipino `
+  + `nipa hut: a very steep tall thatched roof shaped like a wide triangle, `
+  + `sitting high on bamboo stilts with an open platform underneath, `
+  + `painted in ${colourName}, `
+  + `bold simple chunky form, thick heavy shapes, no fine detail, `
+  + `strong readable triangular silhouette, symmetrical, straight from the front, `
   + `flat base, soft light from above, matte painted wood, `
   + `centred and filling the frame, plain white background, no shadow on the `
   + `ground, no scene, no text, hand-painted board game art`;
 
-const TOKEN_NEG = 'photograph, 3d render, glossy, reflective, text, letters, '
-  + 'watermark, signature, frame, border, drop shadow, scene, landscape, '
-  + 'multiple objects, tiny details, thin lines, windows, holes';
+// The other candidate. A balangay is the boat AND the settlement — same word —
+// which is exactly the kind of detail worth putting on the board rather than in
+// a glossary nobody opens.
+const BOAT = (colourName) =>
+  `a carved wooden board game piece of a balangay, a pre-colonial Filipino `
+  + `plank boat: a low curved hull sweeping up at both ends, a single square `
+  + `sail, outrigger floats along the side, `
+  + `painted in ${colourName}, `
+  + `bold simple chunky form, thick heavy shapes, no fine detail, `
+  + `strong readable silhouette, seen from the side, `
+  + `flat base, soft light from above, matte painted wood, `
+  + `centred and filling the frame, plain white background, no shadow on the `
+  + `ground, no water, no scene, no text, hand-painted board game art`;
+
+// The first pass asked for "a stilt house with a peaked roof" and got suburban
+// cottages — pitched roof, front door, little square windows. Wrong continent
+// and wrong millennium for a game about pre-colonial datus.
+//
+// The negatives matter more than the positives here: FLUX's default "house" is
+// Western, so the shape has to be named (bahay kubo, nipa hut, steep thatched
+// triangle on stilts) AND the default actively pushed away.
+const TOKEN_NEG = 'western house, cottage, cabin, suburban house, gable roof, '
+  + 'chimney, front door, square windows, shutters, brick, birdhouse, dollhouse, '
+  + 'photograph, 3d render, glossy, reflective, text, letters, watermark, '
+  + 'signature, frame, border, drop shadow, scene, landscape, multiple objects';
 
 // A tight icon brief.
 //
@@ -162,6 +186,11 @@ const BATCHES = {
   // moves, which is a far smaller problem than an unreadable piece.
   //
   // Colours match --p0..--p3 in index.html; keep them in step.
+  // Two candidate forms, because the theme supports both. A `balangay` is
+  // literally the plank-built boat a datu's community sailed and settled from —
+  // the settlement and the vessel share one word — so the boat is arguably the
+  // truer piece. The hut is the more legible silhouette at 41px. Generate both
+  // and judge at board size.
   pieces: {
     size: [768, 768],
     neg: TOKEN_NEG,
@@ -170,6 +199,15 @@ const BATCHES = {
       'piece-p1': TOKEN('pale cyan blue'),
       'piece-p2': TOKEN('soft leaf green'),
       'piece-p3': TOKEN('warm coral pink'),
+    },
+  },
+
+  boats: {
+    size: [768, 768],
+    neg: TOKEN_NEG,
+    prompts: {
+      'boat-p0': BOAT('warm amber gold'),
+      'boat-p1': BOAT('pale cyan blue'),
     },
   },
 

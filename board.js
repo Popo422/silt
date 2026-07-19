@@ -9,7 +9,6 @@
 import { NODES, MOUTHS, CHANNELS, chKey, NODE_BY_ID } from './graph.js';
 import { buildTargets, shipOptions, TUNING } from './engine.js';
 import { nodeName } from './theme.js';
-import { drawFrame } from './frame.js';
 import { drawBayTrack } from './bays.js';
 import { el, use } from './svg.js';
 
@@ -110,7 +109,6 @@ export function drawBoard(ctx) {
           pendingAction, highlight: hl, artImage, ico, nodeLabel, ART } = ctx;
   svg.innerHTML = '';
   ensureDefs(svg);
-  drawFrame(svg, T);
   // Crosshair while aiming so the board reads as "click a target", not "drag me".
   svg.classList.toggle('aiming', !!pendingAction);
   const owner = {};
@@ -360,15 +358,30 @@ export function drawBoard(ctx) {
       // painted into it, and it holds the silhouette against a busy board.
       grp.appendChild(el('ellipse', { cx: n.x, cy: n.y + 1.5, rx: 1.7, ry: 0.5,
         fill: 'rgba(20,16,10,.5)' }));
-      // Every player's piece is the same object, as it would be on a table.
-      // Yours is outlined so you can find yourself at a glance — done with a
-      // stroke under the fill (paint-order) rather than a larger copy drawn
-      // behind, which the node body simply hid.
-      // Sized to sit INSIDE the node, not to straddle it. At 5.0 against a node
-      // radius of 3.3 the roof overhung the circle entirely and collided with
-      // the place labels and the channels running underneath.
-      const piece = use('#ic-piece', n.x, n.y - 0.1, 3.7, PC[own],
-        own === HUMAN ? 'ownPiece' : '');
+      // Painted balangay, one image per seat colour.
+      //
+      // Was a traced SVG so one asset could take any colour at runtime. Two
+      // things killed that: the trace turned the hut's stilts and windows into
+      // speckle at the ~41px this renders at, and the generated source was a
+      // suburban cottage — pitched roof, front door, square windows — which is
+      // the wrong continent entirely for a game about datus. The prompt now
+      // names the form (bahay kubo, steep thatched roof, bamboo stilts) and
+      // pushes the model's default Western house away in the negatives.
+      //
+      // Four files is the cost of painted art. Worth it: recolouring was the
+      // only thing the vector bought, and it bought it by being unreadable.
+      // Yours gets a bright ring around the node. A CSS stroke cannot mark an
+      // <image> the way it marked the old vector piece, and colour alone fails
+      // for a colourblind player — so the marker is a shape, drawn under the
+      // piece where the art cannot cover it.
+      if (own === HUMAN) {
+        grp.appendChild(el('circle', {
+          cx: n.x, cy: n.y, r: r + 0.55, fill: 'none',
+          stroke: 'rgba(255,248,230,.95)', 'stroke-width': 0.42,
+          'stroke-dasharray': '2.2 1.4',
+        }));
+      }
+      const piece = artImage(`piece-p${own}`, n.x, n.y - 0.15, 4.6);
       // A few degrees of tilt, seeded off the node id. Perfectly axis-aligned
       // pieces read as vector art; a piece set down by a hand never lands square.
       // Deterministic so it does not jitter on every repaint — same trick the
