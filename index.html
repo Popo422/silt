@@ -107,6 +107,77 @@
   #game.hide{display:none}
   #board{flex:1;position:relative;min-width:0}
   #svg{width:100%;height:100%;display:block}
+  /* Effects overlay sits exactly on the board and never intercepts a click. */
+  #fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
+
+  /* Who is acting right now. */
+  #actor{position:absolute;top:10px;left:50%;transform:translateX(-50%) translateY(-6px);
+    z-index:3;pointer-events:none;opacity:0;transition:opacity .16s,transform .16s;
+    font-size:12px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;
+    padding:5px 13px;border-radius:999px;background:color-mix(in srgb,var(--bg) 82%,transparent);
+    border:1px solid var(--line);backdrop-filter:blur(3px);white-space:nowrap}
+  #actor.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  .icoBtn.muted{opacity:.5}
+
+  /* ---- effect animations -------------------------------------------------
+     Every effect is a one-shot that removes itself. Keep durations under ~1s:
+     these fire several times per round and a slow effect becomes a wait. */
+  #fx text{font:600 3.1px ui-sans-serif,system-ui,sans-serif;paint-order:stroke;
+    stroke:var(--bg);stroke-width:.7px;stroke-linejoin:round}
+  .fxFloat{animation:fxFloat 1.25s ease-out forwards;opacity:0}
+  @keyframes fxFloat{
+    0%{opacity:0;transform:translateY(1.2px)}
+    18%{opacity:1}
+    70%{opacity:1}
+    100%{opacity:0;transform:translateY(-3.4px)}}
+  .fxCoin{fill:var(--gold)}
+  .fxVp{fill:var(--good);font-size:3.6px}
+  .fxToll{fill:var(--warn)}
+  .fxSpend{fill:var(--dim2)}
+  .fxBad{fill:var(--bad)}
+  .fxGood{fill:var(--good)}
+
+  /* A boat actually travelling the route — the difference between "this path is
+     highlighted" and "a shipment is happening". */
+  .fxBoat{animation:fxBoatIn .18s ease-out}
+  @keyframes fxBoatIn{from{opacity:0}to{opacity:1}}
+  /* Wake trailing the boat, drawn with a dash offset so it wipes on. */
+  .fxWake{animation:fxWake .26s ease-out forwards;opacity:0;
+    stroke-dasharray:24;stroke-dashoffset:24}
+  @keyframes fxWake{
+    0%{opacity:0;stroke-dashoffset:24}
+    30%{opacity:.85}
+    100%{opacity:0;stroke-dashoffset:0}}
+
+  .fxDredge{animation:fxDredge .8s ease-out forwards;opacity:0}
+  @keyframes fxDredge{0%{opacity:0}25%{opacity:.9}100%{opacity:0}}
+
+  /* Silting: a slow choke, not a flash. Reads as the water giving up. */
+  .fxSilt{animation:fxSilt .95s ease-in forwards;opacity:0}
+  @keyframes fxSilt{0%{opacity:0}35%{opacity:.75}100%{opacity:0}}
+  .fxDie{animation:fxDie 1s ease-in forwards;opacity:0}
+  @keyframes fxDie{
+    0%{opacity:0}20%{opacity:1}55%{opacity:.9}100%{opacity:0}}
+
+  .fxBlock{animation:fxBlock .9s ease-out forwards;opacity:0}
+  @keyframes fxBlock{
+    0%,42%{opacity:0}12%,28%{opacity:1}100%{opacity:0}}
+
+  .fxRing{animation:fxRing .85s ease-out forwards;opacity:0;
+    transform-box:fill-box;transform-origin:center}
+  @keyframes fxRing{
+    0%{opacity:.95;transform:scale(.55)}
+    100%{opacity:0;transform:scale(1.7)}}
+  .fxFade{animation:fxFade .85s ease-out forwards}
+  @keyframes fxFade{0%{opacity:.9}100%{opacity:0}}
+
+  /* Motion sensitivity: effects still convey information, just without travel.
+     Turning them off entirely would remove the feedback the user asked for. */
+  @media (prefers-reduced-motion:reduce){
+    .fxFloat{animation-duration:.9s}
+    .fxWake,.fxBoat{display:none}
+    .fxDredge,.fxSilt,.fxDie,.fxBlock,.fxRing,.fxFade{animation-duration:.5s}
+  }
   aside{width:352px;background:var(--panel);border-left:1px solid var(--line);
     display:flex;flex-direction:column;overflow:hidden}
   header{padding:12px 15px;border-bottom:1px solid var(--line);display:flex;
@@ -388,6 +459,14 @@
   <div id="board">
     <!-- padded viewBox: node art and labels overflow the 0..100 layout coords -->
   <svg id="svg" viewBox="-6 -6 112 112" preserveAspectRatio="xMidYMid meet"></svg>
+    <!-- Effects overlay. drawBoard() wipes #svg on every render, which would kill
+         any animation mid-flight, so effects live in their own layer that nothing
+         else clears. Same viewBox, so board coords need no transform. It must
+         never eat clicks — the board underneath owns all interaction. -->
+    <svg id="fx" viewBox="-6 -6 112 112" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
+    <!-- Whose action is currently resolving. Four players resolving in sequence
+         is unreadable without this: you see effects with no author. -->
+    <div id="actor" aria-live="polite"></div>
 
     <div id="tut">
       <div class="step" id="tutStep"></div>
@@ -418,6 +497,8 @@
         <h2 id="hTitle">ANOD</h2>
         <div class="sub"><span id="rd">Round 1 / 8</span> · <span id="ph">Program</span></div>
       </div>
+      <!-- Animations you cannot skip become an annoyance by round 3. -->
+      <button class="icoBtn" id="btnSpeed" title="Animation speed">1×</button>
       <button class="icoBtn" id="btnRules">Rules</button>
       <button class="icoBtn" id="btnQuit">Menu</button>
     </header>

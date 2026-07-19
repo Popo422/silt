@@ -4,9 +4,10 @@ import {
   buildTargets, dredgeTargets, shipOptions, buildCost, TUNING,
 } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
-import { createTutorial } from './tutorial.js';
+import { createTutorial, stepText } from './tutorial.js';
 import { THEMES, applyTheme, nodeLabel, nodeName } from './theme.js';
 import { pages, createRulebook } from './rulebook.js';
+import { createFX } from './fx.js';
 
 const HUMAN = 0;
 const PC = ['var(--p0)', 'var(--p1)', 'var(--p2)', 'var(--p3)'];
@@ -17,8 +18,32 @@ const BOT_KEYS = ['balanced', 'tollkeeper', 'steward', 'expander', 'turtle', 'de
 
 let g, program, picking, pendingAction, seed, queue, tut, config;
 let roundsPlayed = 0;   // rounds fully resolved this game — drives tutorial gating
+let stepping = false;   // re-entry guard for the async resolution walker
 let T = THEMES.anod;          // active theme (presentation only)
 const book = createRulebook();
+
+// Effects overlay. Board coordinates come straight from the graph, so the FX
+// layer needs no knowledge of the renderer beyond where a node sits.
+const fx = createFX(document.getElementById('fx'), {
+  colors: PC,
+  nodeAt: (id) => NODE_BY_ID[id],
+});
+
+// Animation speed. Playing a round used to be one synchronous blast: every bot
+// acted and the board repainted once at the end, so nothing was ever *seen*.
+// Now each event gets its moment. 'off' collapses that back to instant, which is
+// also what the e2e suite runs at so tests don't wait on animation.
+const SPEEDS = { off: 0, fast: 0.5, normal: 1 };
+let speed = 'normal';
+
+// Hold time is NOT the effect's full duration. Waiting for every animation to
+// finish made one round take 7.4s — a minute of watching per game. Effects are
+// allowed to overlap: you need only long enough to register that a thing happened
+// before the next actor starts, and the tail plays out underneath. Capped so a
+// long shipping route cannot stall the round.
+const HOLD_MAX = 420;
+const holdFor = (ms) => Math.min(HOLD_MAX, ms * 0.45) * (SPEEDS[speed] ?? 1);
+const wait = (ms) => (ms > 0 ? new Promise(r => setTimeout(r, ms)) : Promise.resolve());
 
 const botName = (k) => T.bots[k].name;
 const botDesc = (k) => T.bots[k].desc;
@@ -87,6 +112,7 @@ function buildMenu() {
   $('btnQuit').addEventListener('click', showMenu);
   $('btnMenu').addEventListener('click', showMenu);
   $('btnAgain').addEventListener('click', () => start(false));
+  $('btnSpeed').addEventListener('click', cycleSpeed);
   wireBook();
   wireBoard();
 }
@@ -208,7 +234,10 @@ function start(tutorial, s = Math.floor(Math.random() * 1e9)) {
   picking = null;
   pendingAction = null;
   queue = null;
+  stepping = false;   // a quit mid-resolution would otherwise wedge the next game
   roundsPlayed = 0;
+  fx.clear();
+  setActor(null);
   $('log').innerHTML = '';
   $('ov').classList.remove('on');
   $('menu').classList.add('hide');
@@ -500,15 +529,18 @@ function renderTutorial() {
 
   box.classList.add('on');
   const { i, n } = tut.progress();
+  // Step text is resolved against the active theme so the words the tutorial
+  // tells you to click are the words actually painted on the buttons.
+  const txt = stepText(s, T);
   $('tutStep').textContent = `Step ${i} of ${n}`;
-  $('tutTitle').textContent = s.title;
-  $('tutBody').textContent = s.body;
+  $('tutTitle').textContent = txt.title;
+  $('tutBody').textContent = txt.body;
   // A gated step shows what to do, plus an always-available escape so the
   // tutorial can never trap the player if a condition misfires.
   $('tutNext').style.display = s.check ? 'none' : '';
   $('tutNext').textContent = tut.isLast() ? 'Start playing' : 'Next';
   $('tutSkipStep').style.display = s.check ? '' : 'none';
-  $('tutWait').textContent = s.check ? (s.hint ?? 'Complete the action to continue…') : '';
+  $('tutWait').textContent = s.check ? (txt.hint ?? 'Complete the action to continue…') : '';
 
   const hl = s.highlight?.();
   if (hl?.kind === 'ui') document.querySelector(hl.sel)?.classList.add('uiPulse');
@@ -557,34 +589,46 @@ $('go').addEventListener('click', () => {
   step();
 });
 
-function step() {
-  while (queue) {
-    if (queue.idx >= queue.order.length) {
-      if (queue.slot === 0) {
-        queue = { slot: 1, order: seatOrder(g), idx: 0, claimed: new Set() };
-        continue;
+// Resolution is async so each action can be *seen* before the next one starts.
+// Guarded against re-entry: resolveHuman() also calls step(), and two overlapping
+// walkers would consume the queue twice and skip players. (`stepping` is declared
+// with the other module state at the top — start() touches it before this point.)
+async function step() {
+  if (stepping) return;
+  stepping = true;
+  try {
+    while (queue) {
+      if (queue.idx >= queue.order.length) {
+        if (queue.slot === 0) {
+          queue = { slot: 1, order: seatOrder(g), idx: 0, claimed: new Set() };
+          continue;
+        }
+        queue = null;
+        await endRound();
+        return;
       }
-      queue = null;
-      endRound();
-      return;
-    }
-    const pi = queue.order[queue.idx];
-    const p = g.players[pi];
-    const action = p.program[queue.slot];
-    queue.idx++;
-    if (!action) continue;
+      const pi = queue.order[queue.idx];
+      const p = g.players[pi];
+      const action = p.program[queue.slot];
+      queue.idx++;
+      if (!action) continue;
 
-    if (pi === HUMAN) {
-      const needsTarget =
-        (action === 'dredge' && dredgeTargets(g).length && p.coins >= TUNING.dredgeCoins) ||
-        (action === 'build' && buildTargets(g, p).length && p.coins >= buildCost(p)) ||
-        (action === 'ship' && shipOptions(g, p).length);
-      if (needsTarget) { pendingAction = action; render(); return; }
-      execute(g, pi, action, {}, queue.claimed);
-    } else {
-      execute(g, pi, action, chooseTarget(g, p, action, p.strat), queue.claimed);
+      if (pi === HUMAN) {
+        const needsTarget =
+          (action === 'dredge' && dredgeTargets(g).length && p.coins >= TUNING.dredgeCoins) ||
+          (action === 'build' && buildTargets(g, p).length && p.coins >= buildCost(p)) ||
+          (action === 'ship' && shipOptions(g, p).length);
+        if (needsTarget) { pendingAction = action; render(); return; }
+        execute(g, pi, action, {}, queue.claimed);
+      } else {
+        execute(g, pi, action, chooseTarget(g, p, action, p.strat), queue.claimed);
+      }
+      // Show whose turn it is before the effect fires, otherwise a fast reader
+      // sees a boat move with no idea who sent it.
+      await flush({ actor: pi });
     }
-    flush();
+  } finally {
+    stepping = false;
   }
 }
 
@@ -605,12 +649,12 @@ function wireBoard() {
   });
 }
 
-function resolveHuman(choice) {
+async function resolveHuman(choice) {
   if (!pendingAction || !queue) return;
   const a = pendingAction;
   pendingAction = null;
   execute(g, HUMAN, a, choice, queue.claimed);
-  flush();
+  await flush({ actor: HUMAN });
   step();
 }
 
@@ -621,17 +665,76 @@ function pickShip(from) {
   resolveHuman({ option: opts[0] });
 }
 
-function flush() {
+// Drain the log AND the event stream. The log is the transcript; the events are
+// what you actually watch. Repaint first so the board underneath is correct, then
+// animate on top of it and hold long enough for the effect to be read.
+async function flush({ actor = null } = {}) {
   const me = g.players[HUMAN].name;
   for (const l of g.log) say(l, l.startsWith(me) ? 'me' : '');
   g.log = [];
+
+  const events = g.events ?? [];
+  g.events = [];
   render();
+
+  if (!events.length || speed === 'off') return;
+
+  if (actor !== null) setActor(actor);
+  let longest = 0;
+  for (const ev of events) longest = Math.max(longest, fx.play(ev));
+  await wait(holdFor(longest));
+  setActor(null);
 }
 
-function endRound() {
-  siltPhase(g); regrowPhase(g); upkeepPhase(g);
+// Resolves once the resolution walker is idle — either the round finished or it
+// is waiting on the player. Polls rather than exposing internal promises so it
+// stays correct no matter how many awaits step() grows.
+function settled() {
+  return new Promise((res) => {
+    const tick = () => (!stepping || pendingAction ? res() : setTimeout(tick, 16));
+    tick();
+  });
+}
+
+// 1× -> 2× -> off. Persisted: someone who turns animation off wants it to stay
+// off, not to re-disable it every session.
+const SPEED_ORDER = ['normal', 'fast', 'off'];
+const SPEED_LABEL = { normal: '1×', fast: '2×', off: 'off' };
+
+function cycleSpeed() {
+  speed = SPEED_ORDER[(SPEED_ORDER.indexOf(speed) + 1) % SPEED_ORDER.length];
+  try { localStorage.setItem('silt.speed', speed); } catch { /* private mode */ }
+  applySpeed();
+}
+
+function applySpeed() {
+  fx.setEnabled(speed !== 'off');
+  if (speed === 'off') fx.clear();
+  const b = $('btnSpeed');
+  if (b) { b.textContent = SPEED_LABEL[speed]; b.classList.toggle('muted', speed === 'off'); }
+}
+
+// Name the player currently acting, above the board. Four bots resolving in
+// sequence is unreadable otherwise — you see effects with no author.
+function setActor(pi) {
+  const b = $('actor');
+  if (!b) return;
+  if (pi === null) { b.classList.remove('on'); return; }
+  const p = g.players[pi];
+  b.textContent = pi === HUMAN ? 'You' : p.name;
+  b.style.color = PC[pi];
+  b.classList.add('on');
+}
+
+async function endRound() {
+  // Silting gets its own beat. It is the thing the game is named for and it used
+  // to happen inside the same repaint as upkeep, so the single most important
+  // consequence of the round went by completely unseen.
+  siltPhase(g);
+  await flush();
+  regrowPhase(g); upkeepPhase(g);
   roundsPlayed++;
-  flush();
+  await flush();
   pollTutorial();
   if (g.round >= TUNING.rounds) return finish();
   g.round++;
@@ -673,20 +776,35 @@ window.SILT = {
   setConfig: (c) => Object.assign(config, c),
   state: () => g,
   program: (a, b) => { program = [a, b]; render(); },
-  commit: () => $('go').click(),
+  // These return promises that settle once resolution is idle. Resolution became
+  // async when effects were added, so a test that called commit() and read the
+  // DOM on the next line was racing the render — it failed only under parallel
+  // load, which is the worst way for a race to show up.
+  commit: () => { $('go').click(); return settled(); },
   pending: () => pendingAction,
   autoResolve: () => {
     const p = g.players[HUMAN];
-    resolveHuman(chooseTarget(g, p, pendingAction, 'balanced') ?? {});
+    return resolveHuman(chooseTarget(g, p, pendingAction, 'balanced') ?? {}).then(settled);
   },
   tutorial: () => tut && ({ active: tut.active, ...tut.progress(), id: tut.step()?.id }),
   tutNext: () => { tut?.next(); render(); },
   score: () => score(g),
   seed: () => seed,
-  theme: () => T.id,
+  theme: () => T,
+  themeId: () => T.id,
   setTheme: (id) => setTheme(id),
   openBook, closeBook, tuning: TUNING,
   book: () => ({ open: book.open, page: book.i, total: pages(T).length }),
+  // Effects. Tests set speed 'off' so they never wait on animation — the whole
+  // suite would otherwise slow to a crawl and start flaking on timing.
+  speed: () => speed,
+  setSpeed: (s) => { speed = s; applySpeed(); },
+  fxCount: () => document.getElementById('fx').childElementCount,
+  events: () => g?.events ?? [],
+  actor: () => {
+    const a = $('actor');
+    return a.classList.contains('on') ? a.textContent : null;
+  },
 };
 
 // Sprites must be in the DOM before any <use> resolves. Expose a readiness flag so
@@ -694,6 +812,11 @@ window.SILT = {
 window.SILT.ready = loadSprites().then(() => {
   buildMenu();
   setTheme('anod');
+  try {
+    const saved = localStorage.getItem('silt.speed');
+    if (saved && SPEEDS[saved] !== undefined) speed = saved;
+  } catch { /* private mode: fall back to the default */ }
+  applySpeed();
   window.SILT.isReady = true;
 });
 await window.SILT.ready;

@@ -5,8 +5,14 @@ const boot = async (page, seed = 20260719, players = 4) => {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.addInitScript(() => {
+    try { localStorage.removeItem('silt.speed'); } catch { /* private mode */ }
+  });
   await page.goto('/index.html');
   await page.waitForFunction(() => window.SILT?.isReady === true);
+  // Animations off: these suites assert state, not motion, and would otherwise
+  // wait on every effect. playthrough.spec.js deliberately leaves them ON.
+  await page.evaluate(() => window.SILT.setSpeed('off'));
   await page.evaluate(() => window.SILT.setTheme('silt'));
   await page.evaluate(n => window.SILT.setConfig({
     players: n, bots: ['balanced', 'expander', 'steward'].slice(0, n - 1),
@@ -136,6 +142,10 @@ test.describe('actions', () => {
     await boot(page);
     await page.evaluate(() => window.SILT.program('build', 'survey'));
     await page.evaluate(() => window.SILT.commit());
+    // Resolution is async now, so commit() returns before the prompt is painted.
+    // Reading the DOM straight after raced the render and failed only under
+    // parallel load.
+    await page.waitForFunction(() => window.SILT.pending() === 'build');
     const legal = await page.evaluate(() => {
       const g = window.SILT.state();
       const owned = new Set(g.players.flatMap(p => p.stations));

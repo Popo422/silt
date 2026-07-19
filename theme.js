@@ -135,6 +135,12 @@ export const THEME = {
     '--timber':  '#b6d47f',
     '--grain':   '#f0d97a',
     '--salt':    '#d8ecea',
+    // Feedback colours for the effects layer. Deliberately brighter than the
+    // board palette: these appear for under a second and must read instantly.
+    '--good':    '#8fe0ac',
+    '--warn':    '#f0b95e',
+    '--bad':     '#f08a72',
+    '--silt':    '#c9a878',
   },
 
   // Sprite ids used for board furniture and the action buttons.
@@ -189,6 +195,7 @@ export const PLAIN = {
     '--water3':'#54a6c9','--water2':'#5b8698','--water1':'#8f9a86','--dead':'#6b4a2c',
     '--gold':'#f2bc6e','--p0':'#f2bc6e','--p1':'#7fc3ea','--p2':'#9bdb86','--p3':'#e895ad',
     '--timber':'#d9975a','--grain':'#ecd97a','--salt':'#bfe6ee',
+    '--good':'#86dcb4','--warn':'#f0b95e','--bad':'#f08a8a','--silt':'#bfa483',
   },
   icons: {
     station: 'station', mouth: 'mouth', logo: 'river', dead: 'silted',

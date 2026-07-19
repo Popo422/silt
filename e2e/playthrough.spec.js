@@ -3,13 +3,31 @@ import { test, expect } from '@playwright/test';
 // Real playthroughs: every interaction goes through the DOM the way a human does.
 // No window.SILT helpers for commit/resolve — those bypass exactly the wiring that
 // breaks. State is only ever READ via window.SILT, never driven by it.
+//
+// These run WITH animation on, at the speed a person actually plays at, because
+// the point is to prove the game is completable as shipped. That makes them slow:
+// a full 8-round game is ~20s of deliberate animation, and several such games run
+// per test. The default 30s budget fits when a test runs alone but not when six
+// workers compete for CPU — which showed up as four tests failing in the suite and
+// passing in isolation. The game was fine; the budget was not.
+test.describe.configure({ timeout: 180_000 });
 
 const open = async (page) => {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  // Animation speed persists to localStorage, which is shared across the workers
+  // running this file in parallel. Without clearing it a test that turns effects
+  // off changes the speed of an unrelated test — the suite failed only when run
+  // together and passed in isolation, which is exactly what that looks like.
+  await page.addInitScript(() => {
+    try { localStorage.removeItem('silt.speed'); } catch { /* private mode */ }
+  });
   await page.goto('/index.html');
   await page.waitForFunction(() => window.SILT?.isReady === true);
+  // This suite deliberately runs WITH animation: its whole job is proving a human
+  // can finish the game at real speed.
+  await page.evaluate(() => window.SILT.setSpeed('normal'));
   return errors;
 };
 
@@ -31,13 +49,32 @@ async function clickTarget(page) {
   return true;
 }
 
+// Resolution is animated, so a round advances over many frames instead of in one
+// synchronous blast. Wait for the game to reach a state the player can act on:
+// either a prompt is up, or the round has moved on, or the game is over.
+//
+// Do NOT wait on g.log — flush() clears it, so it is empty at almost every poll.
+// That is the same trap that made the old tutorial 'commit' step impossible.
+async function settle(page, fromRound) {
+  await page.waitForFunction((r0) => {
+    const s = window.SILT;
+    if (s.pending() !== null) return true;                  // needs my input
+    if (document.getElementById('ov').classList.contains('on')) return true;  // finished
+    return (s.state()?.round ?? 0) !== r0;                  // round advanced
+  }, fromRound, { timeout: 20000 });
+}
+
 // Play one round entirely by clicking.
 async function playRound(page, a = 'ship', b = 'dredge') {
+  const r0 = await page.evaluate(() => window.SILT.state()?.round);
   await page.locator(`[data-act="${a}"]`).click();
   await page.locator(`[data-act="${b}"]`).click();
   await expect(page.locator('#go')).toBeEnabled();
   await page.locator('#go').click();
-  for (let i = 0; i < 4; i++) {
+  // More iterations than there are slots: a prompt can appear a frame or two
+  // after the previous one resolves.
+  for (let i = 0; i < 8; i++) {
+    await settle(page, r0);
     if (!await clickTarget(page)) break;
   }
 }
@@ -129,8 +166,12 @@ test.describe('real tutorial — clicks only', () => {
       } else if (t.id === 'pick-second') {
         await page.locator('[data-act="dredge"]').click();
       } else if (t.id === 'commit') {
+        const r0 = await page.evaluate(() => window.SILT.state()?.round);
         await page.locator('#go').click();
-        for (let i = 0; i < 4; i++) if (!await clickTarget(page)) break;
+        for (let i = 0; i < 8; i++) {
+          await settle(page, r0);
+          if (!await clickTarget(page)) break;
+        }
       } else {
         throw new Error(`gated step with no scripted action: ${t.id}`);
       }
@@ -154,8 +195,12 @@ test.describe('real tutorial — clicks only', () => {
       if (t.id === 'pick-ship') await page.locator('[data-act="ship"]').click();
       else if (t.id === 'pick-second') await page.locator('[data-act="dredge"]').click();
       else if (t.id === 'commit') {
+        const r0 = await page.evaluate(() => window.SILT.state()?.round);
         await page.locator('#go').click();
-        for (let i = 0; i < 4; i++) if (!await clickTarget(page)) break;
+        for (let i = 0; i < 8; i++) {
+          await settle(page, r0);
+          if (!await clickTarget(page)) break;
+        }
       } else await page.locator('#tutSkipStep').click();
     }
     // finish the remaining rounds by hand
@@ -187,11 +232,15 @@ test.describe('real playthrough on a phone', () => {
     await page.locator('[data-len="5"]').click();
     await page.locator('#btnPlay').click();
     for (let r = 0; r < 5; r++) {
+      const r0 = await page.evaluate(() => window.SILT.state()?.round);
       await page.locator('[data-act="ship"]').click();
       await page.locator('[data-act="dredge"]').click();
       await page.locator('#go').scrollIntoViewIfNeeded();
       await page.locator('#go').click();
-      for (let i = 0; i < 4; i++) if (!await clickTarget(page)) break;
+      for (let i = 0; i < 8; i++) {
+        await settle(page, r0);
+        if (!await clickTarget(page)) break;
+      }
     }
     await expect(page.locator('#ov')).toHaveClass(/on/);
     expect(errors).toEqual([]);

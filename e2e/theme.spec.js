@@ -6,8 +6,14 @@ const open = async (page) => {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.addInitScript(() => {
+    try { localStorage.removeItem('silt.speed'); } catch { /* private mode */ }
+  });
   await page.goto('/index.html');
   await page.waitForFunction(() => window.SILT?.isReady === true);
+  // Animations off: these suites assert state, not motion, and would otherwise
+  // wait on every effect. playthrough.spec.js deliberately leaves them ON.
+  await page.evaluate(() => window.SILT.setSpeed('off'));
   return errors;
 };
 
@@ -114,7 +120,7 @@ test.describe('rulebook', () => {
 test.describe('theme', () => {
   test('starts on the Filipino theme', async ({ page }) => {
     await open(page);
-    expect(await page.evaluate(() => window.SILT.theme())).toBe('anod');
+    expect(await page.evaluate(() => window.SILT.themeId())).toBe('anod');
     await expect(page.locator('#mTitle')).toHaveText('ANOD');
   });
 
@@ -293,5 +299,82 @@ test.describe('tablet', () => {
       document.documentElement.scrollWidth > window.innerWidth + 1);
     expect(overflow).toBe(false);
     expect(errors).toEqual([]);
+  });
+});
+
+// The tutorial used to hardcode English action names ("pick SHIP") while the
+// buttons beside it rendered the themed label ("Bangka"). That is not cosmetic:
+// it instructs a new player to click a word that is nowhere on screen. These
+// tests assert the tutorial and the board always speak the same language.
+test.describe('tutorial speaks the active theme', () => {
+  // Walk every step and return its rendered title+body, per theme.
+  const tourText = async (page) => {
+    await page.locator('#btnTutorial').click();
+    const seen = [];
+    for (let guard = 0; guard < 30; guard++) {
+      const t = await page.evaluate(() => window.SILT.tutorial());
+      if (!t || !t.active) break;
+      seen.push({
+        id: t.id,
+        title: await page.locator('#tutTitle').textContent(),
+        body: await page.locator('#tutBody').textContent(),
+        hint: await page.locator('#tutWait').textContent(),
+      });
+      if (await page.locator('#tutNext').isVisible()) await page.locator('#tutNext').click();
+      else await page.locator('#tutSkipStep').click();
+    }
+    return seen;
+  };
+
+  test('names the actions exactly as the buttons paint them', async ({ page }) => {
+    await open(page);
+    const steps = await tourText(page);
+
+    // What the ship step tells you to click must be on the ship button.
+    const shipBtn = await page.evaluate(() => window.SILT.theme().actions.ship.name);
+    const ship = steps.find(s => s.id === 'pick-ship');
+    expect(ship.title + ship.body, 'ship step must name the themed action')
+      .toContain(shipBtn);
+
+    // And the second-slot step must name all three of the others.
+    const second = steps.find(s => s.id === 'pick-second');
+    const names = await page.evaluate(() =>
+      ['dredge', 'build', 'survey'].map(k => window.SILT.theme().actions[k].name));
+    for (const n of names) expect(second.body, `must name ${n}`).toContain(n);
+  });
+
+  test('never uses the plain-theme action words while ANOD is active', async ({ page }) => {
+    await open(page);
+    const steps = await tourText(page);
+    const all = steps.map(s => `${s.title} ${s.body} ${s.hint}`).join(' ');
+
+    // Bare English action verbs are fine as glosses in parens — "Bangka (ship)" —
+    // but must never stand alone as the thing you are told to click.
+    for (const word of ['SHIP', 'DREDGE', 'SETTLE', 'SURVEY']) {
+      expect(all, `${word} should not appear uppercased`).not.toContain(word);
+    }
+  });
+
+  test('glosses each Tagalog term on first use', async ({ page }) => {
+    await open(page);
+    const steps = await tourText(page);
+    const all = steps.map(s => `${s.title} ${s.body}`).join(' ');
+    // A foreigner has to be able to decode it: the first time an action appears
+    // it carries its English gloss in parens.
+    for (const [k, en] of [['ship', 'ship'], ['dredge', 'dredge'], ['survey', 'survey']]) {
+      const name = await page.evaluate(
+        (kk) => window.SILT.theme().actions[kk].name, k);
+      expect(all, `${name} needs a gloss somewhere`).toContain(`${name} (${en})`);
+    }
+  });
+
+  test('falls back to plain English on the SILT theme', async ({ page }) => {
+    await open(page);
+    await page.locator('[data-theme="silt"]').click();
+    const steps = await tourText(page);
+    const ship = steps.find(s => s.id === 'pick-ship');
+    // No empty parens or doubled words like "Ship (ship)" on the plain theme.
+    expect(ship.body).not.toMatch(/\((\s*)\)/);
+    expect(ship.body.toLowerCase()).not.toContain('ship (ship)');
   });
 });

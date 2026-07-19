@@ -5,6 +5,8 @@ import {
   buildCost, TUNING, ACTIONS,
 } from './engine.js';
 import { CHANNELS, MOUTHS, NODES, chKey, buildIndex, NODE_BY_ID } from './graph.js';
+import { THEME, PLAIN } from './theme.js';
+import { STEPS, stepText } from './tutorial.js';
 
 const noClaim = () => new Set();
 
@@ -816,5 +818,62 @@ describe('invariants over a full game', () => {
       expect(buildTargets(g, p)).toHaveLength(0);
     }
     expect(() => { siltPhase(g); regrowPhase(g); upkeepPhase(g); score(g); }).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------- tutorial text
+// The themed-tutorial e2e tests all asserted that certain words were PRESENT and
+// passed while the plain theme rendered "You move ,  and  downstream" — the
+// PLAIN goods carry an empty gloss. Presence tests cannot see a malformed
+// sentence. These assert shape instead, on every step of every theme.
+describe('tutorial copy is well-formed in every theme', () => {
+  const themes = [THEME, PLAIN];
+  const all = (T) => STEPS.map(s => stepText(s, T));
+
+  it.each(themes.map(t => [t.title, t]))('%s: no empty slots or doubled spaces', (_n, T) => {
+    for (const s of all(T)) {
+      for (const [field, v] of Object.entries(s)) {
+        if (!v) continue;
+        const where = `${T.id}/${field}`;
+        expect(v, `${where}: doubled space means an empty interpolation`)
+          .not.toMatch(/ {2}/);
+        expect(v, `${where}: empty parens`).not.toMatch(/\(\s*\)/);
+        expect(v, `${where}: dangling comma`).not.toMatch(/(,\s*,|,\s*and\b\s*[.,])/);
+        expect(v, `${where}: leftover template literal`).not.toContain('${');
+        expect(v, `${where}: undefined leaked in`).not.toMatch(/\bundefined\b/);
+      }
+    }
+  });
+
+  it.each(themes.map(t => [t.title, t]))('%s: every step has a title and body', (_n, T) => {
+    for (const [i, s] of all(T).entries()) {
+      expect(s.title.length, `step ${i} title`).toBeGreaterThan(3);
+      expect(s.body.length, `step ${i} body`).toBeGreaterThan(20);
+      expect(s.body.trim(), `step ${i} body punctuation`).toMatch(/[.!?]$/);
+    }
+  });
+
+  it.each(themes.map(t => [t.title, t]))('%s: plural nouns agree with "are"', (_n, T) => {
+    for (const s of all(T)) {
+      // "That is where contract are filled" — singular noun, plural verb.
+      expect(s.body, `${T.id}: singular noun before "are"`)
+        .not.toMatch(/\b(contract|station|channel|good)\s+are\b/i);
+    }
+  });
+
+  it('names goods even when the theme has no gloss', () => {
+    // PLAIN leaves goods.gloss empty; the sentence must fall back to the name.
+    const welcome = stepText(STEPS.find(s => s.id === 'welcome'), PLAIN);
+    for (const w of ['timber', 'grain', 'salt']) {
+      expect(welcome.body.toLowerCase(), `must name ${w}`).toContain(w);
+    }
+  });
+
+  it('gates every instruction on something the player can see', () => {
+    // A gated step must tell you what to click, or it is a dead end.
+    for (const s of STEPS.filter(s => s.check)) {
+      const { hint } = stepText(s, THEME);
+      expect(hint, `step ${s.id} is gated and needs a hint`).toBeTruthy();
+    }
   });
 });

@@ -142,7 +142,7 @@ export function newGame(playerCount = 3, seed = 12345) {
   return {
     round: 1, phase: 'program', slot: 0, firstPlayer, draftOrder,
     depth, rights, cubes, players, deck, out, inn,
-    log: [], shippedThisRound: new Set(), seed, rand,
+    log: [], events: [], shippedThisRound: new Set(), seed, rand,
   };
 }
 
@@ -253,6 +253,20 @@ function tryContracts(g, p) {
   }
 }
 
+// Structured record of what just happened, for the UI to animate.
+//
+// The log is prose: fine for a transcript, useless for showing a player WHERE on
+// the board a thing occurred. Without this the whole round resolved into a single
+// repaint and the board read as a spreadsheet that redraws — you could not see a
+// channel silt, a toll get paid, or a route being run. Events carry the geometry
+// (which channel, which node, which path) so the renderer can point at it.
+//
+// The engine stays pure: it records what happened and knows nothing about timing,
+// tweening or colour. `g.events` is drained by the caller exactly like `g.log`.
+function emit(g, type, data) {
+  (g.events ??= []).push({ type, ...data });
+}
+
 // Execute one player's action for the current slot.
 // `choice` is a UI/AI-supplied selection: {node} | {channel} | {ship option index}
 export function execute(g, pi, action, choice, claimed) {
@@ -260,13 +274,26 @@ export function execute(g, pi, action, choice, claimed) {
   switch (action) {
     case 'dredge': {
       const k = choice?.channel;
-      if (!k || g.depth[k] <= 0 || g.depth[k] >= TUNING.maxDepth) { g.log.push(`${p.name} dredge fizzles`); return; }
-      if (p.coins < TUNING.dredgeCoins) { g.log.push(`${p.name} cannot afford dredge`); return; }
+      if (!k || g.depth[k] <= 0 || g.depth[k] >= TUNING.maxDepth) {
+        g.log.push(`${p.name} dredge fizzles`);
+        emit(g, 'fizzle', { pi, action, channel: k ?? null });
+        return;
+      }
+      if (p.coins < TUNING.dredgeCoins) {
+        g.log.push(`${p.name} cannot afford dredge`);
+        emit(g, 'fizzle', { pi, action, reason: 'coins' });
+        return;
+      }
       p.coins -= TUNING.dredgeCoins;
+      const before = g.depth[k];
       g.depth[k] = Math.min(TUNING.maxDepth, g.depth[k] + TUNING.dredgeAmount);
       let claim = '';
-      if (TUNING.rightsEnabled && g.rights[k] !== pi) { g.rights[k] = pi; claim = ' — claims rights'; }
+      let claimed_ = false;
+      if (TUNING.rightsEnabled && g.rights[k] !== pi) {
+        g.rights[k] = pi; claim = ' — claims rights'; claimed_ = true;
+      }
       g.log.push(`${p.name} dredges ${k} to ${g.depth[k]} (-${TUNING.dredgeCoins}c)${claim}`);
+      emit(g, 'dredge', { pi, channel: k, from: before, to: g.depth[k], claimed: claimed_ });
       break;
     }
     case 'build': {
@@ -280,19 +307,37 @@ export function execute(g, pi, action, choice, claimed) {
       // (14.3 claims/game). Cut as dead rules weight.
       if (claimed.has(node)) {
         g.log.push(`${p.name} cannot build ${node} — just taken`);
+        emit(g, 'fizzle', { pi, action, node, reason: 'taken' });
         return;
       }
-      if (p.coins < cost || !buildTargets(g, p).includes(node)) { g.log.push(`${p.name} cannot build ${node}`); return; }
+      if (p.coins < cost || !buildTargets(g, p).includes(node)) {
+        g.log.push(`${p.name} cannot build ${node}`);
+        emit(g, 'fizzle', { pi, action, node, reason: 'illegal' });
+        return;
+      }
       p.coins -= cost; p.stations.push(node); claimed.add(node);
       // A station develops its node: it brings cubes online.
+      const cubesBefore = g.cubes[node];
       g.cubes[node] = Math.min(TUNING.cubesPerNode, g.cubes[node] + TUNING.buildCubeBonus);
       g.log.push(`${p.name} builds ${node} (-${cost}c, node now ${g.cubes[node]} cubes)`);
+      emit(g, 'build', { pi, node, cost, cubesFrom: cubesBefore, cubesTo: g.cubes[node] });
       break;
     }
     case 'ship': {
       const o = choice?.option;
-      if (!o || g.cubes[o.from] <= 0) { g.log.push(`${p.name} ship fizzles`); return; }
-      if (o.path.some(k => g.depth[k] < 1)) { g.log.push(`${p.name} route silted — ship fails`); return; }
+      if (!o || g.cubes[o.from] <= 0) {
+        g.log.push(`${p.name} ship fizzles`);
+        emit(g, 'fizzle', { pi, action, node: o?.from ?? null, reason: 'empty' });
+        return;
+      }
+      if (o.path.some(k => g.depth[k] < 1)) {
+        g.log.push(`${p.name} route silted — ship fails`);
+        // The most instructive failure in the game: show which reach was dead.
+        emit(g, 'blocked', {
+          pi, path: o.path, at: o.path.find(k => g.depth[k] < 1), from: o.from, mouth: o.mouth,
+        });
+        return;
+      }
       const n = Math.min(o.cubes, g.cubes[o.from]);
       g.cubes[o.from] -= n;
       p.delivered[o.mouth][o.good] += n;
@@ -303,6 +348,7 @@ export function execute(g, pi, action, choice, claimed) {
 
       // Tolls: dredging is an investment, not charity. Others pay to use what you maintain.
       let tolls = 0;
+      const paid = [];   // per-channel, so the UI can flash the toll where it was levied
       if (TUNING.rightsEnabled) {
         for (const k of o.path) {
           const holder = g.rights[k];
@@ -312,10 +358,20 @@ export function execute(g, pi, action, choice, claimed) {
           p.coins -= owed;
           g.players[holder].coins += owed;
           tolls += owed;
+          paid.push({ channel: k, to: holder, amount: owed });
         }
       }
       g.log.push(`${p.name} ships ${n} ${o.good} -> ${o.mouth} (+${pay}c${tolls ? `, -${tolls}c tolls` : ''})`);
+      emit(g, 'ship', {
+        pi, path: o.path, from: o.from, mouth: o.mouth, good: o.good,
+        cubes: n, pay, tolls: paid,
+      });
+      const doneBefore = p.done.length;
       tryContracts(g, p);
+      // Contract completions are the payoff moment; surface each one separately.
+      for (const c of p.done.slice(doneBefore)) {
+        emit(g, 'contract', { pi, mouth: o.mouth, vp: c.vp, kind: c.kind });
+      }
       break;
     }
     case 'survey': {
@@ -327,6 +383,7 @@ export function execute(g, pi, action, choice, claimed) {
         for (const c of drawn) if (c !== keep) g.deck.unshift(c);
       }
       g.log.push(`${p.name} surveys (+${TUNING.surveyCoins}c)`);
+      emit(g, 'survey', { pi, coins: TUNING.surveyCoins, drew: drawn.length });
       break;
     }
   }
@@ -342,15 +399,21 @@ export function siltPhase(g) {
       for (const nx of (g.out[to] ?? [])) hit.add(chKey(to, nx));
     }
   }
+  // Collected rather than emitted one-by-one: the UI shows silting as a single
+  // sweep across the whole delta, which is the moment the game is named for.
+  const dropped = [], died = [];
   for (const k of hit) {
     if (g.depth[k] > 0) {
+      const before = g.depth[k];
       g.depth[k] = Math.max(0, g.depth[k] - TUNING.siltPerShip); n++;
-      if (g.depth[k] === 0) g.rights[k] = null;   // nobody owns a dead channel
+      dropped.push({ channel: k, from: before, to: g.depth[k] });
+      if (g.depth[k] === 0) { g.rights[k] = null; died.push(k); }   // nobody owns a dead channel
     }
   }
   g.log.push(`Silt: ${n} channels drop`);
   const gone = Object.entries(g.depth).filter(([, v]) => v === 0).length;
   if (gone) g.log.push(`  ${gone} channel(s) SILTED total`);
+  emit(g, 'silt', { dropped, died, total: gone });
   g.shippedThisRound = new Set();
 }
 
@@ -380,7 +443,14 @@ export function regrowPhase(g) {
 export function upkeepPhase(g) {
   for (const p of g.players) {
     let due = Math.max(0, p.stations.length - TUNING.freeStations) * TUNING.upkeepPerStation;
-    while (due > p.coins && p.stations.length) { p.stations.pop(); due -= TUNING.upkeepPerStation; g.log.push(`${p.name} abandons a station`); }
+    while (due > p.coins && p.stations.length) {
+      const lost = p.stations.pop();
+      due -= TUNING.upkeepPerStation;
+      g.log.push(`${p.name} abandons a station`);
+      // Losing a station to upkeep is the harshest thing that can happen to you
+      // and it used to pass by in a line of text nobody read.
+      emit(g, 'abandon', { pi: g.players.indexOf(p), node: lost });
+    }
     p.coins -= Math.min(due, p.coins);
     if (due > 0) g.log.push(`${p.name} pays ${due}c upkeep`);
   }
