@@ -383,6 +383,8 @@ function startDemo() {
     // smaller value and cut every caption to 1.3s — still unreadable.
     wait: (ms) => wait(ms * SPEEDS.normal),
     silent: () => false,
+    // Lets the demo hold a caption until the voice has finished saying it.
+    speaking: () => speech.speaking(),
     newRound: (r) => {
       for (const p of g.players) p.program = STRATEGIES[p.strat](g, p);
       committedThisRound = true;

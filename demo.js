@@ -22,6 +22,10 @@
 // sentence, short enough that eight rounds stay watchable.
 const READ_MS = 2600;
 
+// How often to check whether the voice has finished. Short enough not to add a
+// noticeable gap after the last word, long enough to be free.
+const SPEECH_POLL_MS = 120;
+
 // ---------------------------------------------------------------- narration
 //
 // Two kinds of line. AMBIENT plays at a fixed point in the game and explains a
@@ -227,11 +231,27 @@ export function createDemo(host) {
 
     // A caption needs longer on screen than an effect does — you have to read
     // it. Skipped when paused, because the pause gate is already holding.
+    //
+    // READ_MS is tuned for reading silently. Reading the same paragraph ALOUD
+    // takes four or five times as long, so with the voice on this waits for the
+    // utterance to finish instead: otherwise the next beat fires on the timer
+    // and cuts the sentence off partway through, every single time.
     async hold() {
       if (!this.active) return;
       await this.unpaused();
       if (!this.active || this.host.silent()) return;
       await this.host.wait(READ_MS);
+      await this.spoken();
+    },
+
+    // Wait out an in-progress utterance. Polled rather than event-driven: the
+    // demo can be paused, taken over or quit mid-sentence, and every one of
+    // those has to break the wait — an onend handler would strand it.
+    async spoken() {
+      if (!this.host.speaking) return;
+      while (this.active && !this.paused && this.host.speaking()) {
+        await this.host.wait(SPEECH_POLL_MS);
+      }
     },
 
     // Round after round with no commit button. Mirrors the human flow exactly:

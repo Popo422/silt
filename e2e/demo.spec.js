@@ -224,3 +224,92 @@ test('each caption is spoken once, not restarted on every repaint', async ({ pag
   expect(spoken.length).toBeLessThanOrEqual(fired.length + 1);
   expect(new Set(spoken).size).toBe(spoken.length);   // no caption said twice
 });
+
+// The bug this exists to catch: captions advance on a fixed timer, but reading
+// one aloud takes several times longer, so every utterance got cut off partway
+// through by the next beat.
+//
+// The earlier speech stub returned instantly, which made that timing mismatch
+// structurally invisible — it asserted that a beat reaches the speech layer,
+// never that the demo waits for it. This stub takes real time to "speak", so
+// interruption is observable.
+test('a caption is not cut off mid-sentence by the next beat', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__events = [];
+    let speaking = false;
+    let timer = null;
+    Object.defineProperty(window, 'speechSynthesis', {
+      configurable: true,
+      value: {
+        get speaking() { return speaking; },
+        get pending() { return false; },
+        getVoices: () => [{ name: 'Google UK English Male', lang: 'en-GB' }],
+        speak(u) {
+          // MUST outlast READ_MS (2600ms), or the stub finishes inside the
+          // caption's own hold and interruption can never be observed — the
+          // test then passes against the broken code, which is exactly how the
+          // first version of it slipped through. Real speech at ~150 wpm takes
+          // 12s or so for a caption this long; 5s is enough to prove the point
+          // without making the suite crawl.
+          window.__events.push({ type: 'start', text: u.text });
+          speaking = true;
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            speaking = false;
+            window.__events.push({ type: 'end', text: u.text });
+          }, 5000);
+        },
+        cancel() {
+          if (speaking) window.__events.push({ type: 'cut' });
+          speaking = false;
+          clearTimeout(timer);
+        },
+        addEventListener: () => {},
+      },
+    });
+    window.SpeechSynthesisUtterance = function (t) { this.text = t; };
+  });
+  await page.goto('/index.html');
+  await page.evaluate(() => window.SILT.ready);
+  await page.evaluate(() => window.SILT.watch());
+  await page.locator('#tutSpeak').click();
+
+  // Let several beats go by.
+  await expect.poll(() => page.evaluate(() =>
+    window.__events.filter(e => e.type === 'start').length), { timeout: 30_000 })
+    .toBeGreaterThan(2);
+
+  const events = await page.evaluate(() => window.__events);
+  expect(events.some(e => e.type === 'cut'),
+    'a sentence was interrupted before it finished').toBe(false);
+});
+
+// Voice selection. The first version matched five exact names, and a stock
+// Windows box (David/Mark/Zira only) matched none of them — so it fell through
+// to "first English voice", which is David, the most robotic available.
+test('picks the best voice on offer rather than the first one', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__picked = null;
+    Object.defineProperty(window, 'speechSynthesis', {
+      configurable: true,
+      value: {
+        // Deliberately ordered worst-first: taking all[0] would pick David.
+        getVoices: () => [
+          { name: 'Microsoft David - English (United States)', lang: 'en-US' },
+          { name: 'Microsoft Zira - English (United States)', lang: 'en-US' },
+          { name: 'Microsoft Ava (Natural) - English (United States)', lang: 'en-US' },
+        ],
+        speak(u) { window.__picked = u.voice?.name ?? null; },
+        cancel() {}, get speaking() { return false; }, get pending() { return false; },
+        addEventListener: () => {},
+      },
+    });
+    window.SpeechSynthesisUtterance = function (t) { this.text = t; };
+  });
+  await page.goto('/index.html');
+  await page.evaluate(() => window.SILT.ready);
+  await page.evaluate(() => window.SILT.watch());
+  await page.locator('#tutSpeak').click();
+
+  await expect.poll(() => page.evaluate(() => window.__picked)).toContain('Natural');
+});

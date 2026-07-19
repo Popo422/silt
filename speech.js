@@ -17,16 +17,33 @@
 
 const KEY = 'silt.speech';
 
-// Voice preference, best first. Picking is a guess either way — these are just
-// the ones that sound least mechanical where they exist. Falls back to whatever
-// the platform gives us for the language.
-const PREFERRED = [
-  'Google UK English Male',
-  'Microsoft Guy Online (Natural) - English (United States)',
-  'Microsoft Ryan Online (Natural) - English (United Kingdom)',
-  'Daniel',                      // macOS en-GB
-  'Google US English',
+// Voice preference. Scored rather than matched by exact name: the previous
+// version listed five specific names, and a Windows box with only the three
+// stock SAPI5 voices (David, Mark, Zira) matched NONE of them, so it fell
+// through to "first English voice" — David, the most robotic of the three.
+//
+// Quality tiers, roughly:
+//   Natural/Neural  — Microsoft's modern voices, genuinely close to human.
+//                     Free to install: Settings > Time & Language > Speech.
+//   Online/remote   — Edge exposes ~100 cloud neural voices Chrome does not.
+//   Google *        — Chrome's own bundled voices, decent.
+//   Everything else — the old SAPI5 engines. Robotic, but they always exist.
+const VOICE_SCORE = [
+  [/natural|neural/i, 100],
+  [/online/i, 80],
+  [/^Google/, 60],
+  [/Daniel|Samantha|Alex|Karen|Moira/, 50],   // macOS/iOS, markedly better
+  [/Mark/, 12],                               // least bad of the stock three
+  [/Zira/, 10],
+  [/David/, 8],
 ];
+
+const scoreVoice = (v) => {
+  let s = 0;
+  for (const [re, n] of VOICE_SCORE) if (re.test(v.name)) { s = Math.max(s, n); }
+  if (/^en[-_]?GB/i.test(v.lang)) s += 3;   // tie-break, nothing more
+  return s;
+};
 
 export function createSpeech() {
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
@@ -48,9 +65,10 @@ export function createSpeech() {
     if (!synth) return;
     const all = synth.getVoices();
     if (!all.length) return;
-    voice = PREFERRED.map(n => all.find(v => v.name === n)).find(Boolean)
-      ?? all.find(v => v.lang?.startsWith('en'))
-      ?? all[0];
+    const en = all.filter(v => /^en/i.test(v.lang ?? ''));
+    const pool = en.length ? en : all;
+    voice = pool.reduce((best, v) =>
+      (scoreVoice(v) > scoreVoice(best) ? v : best), pool[0]);
   };
   if (synth) {
     pickVoice();
@@ -83,6 +101,14 @@ export function createSpeech() {
         this.speak(title, body);
       }
       if (paused) this.stop();
+    },
+
+    // True while an utterance is in progress. The demo holds a caption on a
+    // fixed timer, which is far shorter than it takes to read 40 words aloud —
+    // without this the next beat arrives and cuts the voice off mid-sentence.
+    speaking() {
+      if (!enabled || !synth) return false;
+      return !!(synth.speaking || synth.pending);
     },
 
     // Forget what was spoken, so the next narrate() starts fresh. Used when the
