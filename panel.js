@@ -397,9 +397,28 @@ export function renderActor({ el, pi, action, T, colors, who }) {
 // so you choose WITH the board and your existing contracts in view: which one is
 // worth chasing depends on where your settlements are and which bays you can
 // reach, and a modal that hid the board would take away exactly that context.
+// The survey picker normally lives in the sidebar. On a phone it becomes a fixed
+// bottom sheet — but #survey sits inside #top's stacking context, which the action
+// bar (#bar) paints over, so a fixed z-index cannot lift it clear. Reparenting it
+// to <body> while active escapes that context entirely; it goes home when dismissed.
+function placeSurvey(box) {
+  const mobile = matchMedia('(max-width: 820px), (pointer: coarse) and (max-width: 1024px)').matches;
+  if (mobile && box.parentElement !== document.body) {
+    box._home = box.nextSibling ? { parent: box.parentElement, before: box.nextSibling }
+      : { parent: box.parentElement, before: null };
+    document.body.appendChild(box);
+  }
+}
+function homeSurvey(box) {
+  if (box._home && box.parentElement === document.body) {
+    box._home.parent.insertBefore(box, box._home.before);
+    box._home = null;
+  }
+}
+
 export function renderSurvey({ el, draw, T, tuning, nodeLabel, esc, onKeep }) {
   const box = el('survey');
-  if (!draw) { box.classList.remove('on'); box.innerHTML = ''; return; }
+  if (!draw) { box.classList.remove('on'); box.innerHTML = ''; homeSurvey(box); return; }
   const card = (c, i) => {
     const pts = Math.round(c.vp * tuning.contractScale);
     const where = c.mouth ? nodeLabel(T, c.mouth) : 'any bay';
@@ -414,6 +433,7 @@ export function renderSurvey({ el, draw, T, tuning, nodeLabel, esc, onKeep }) {
     <div class="surveyCards">${draw.map(card).join('')}</div>
     <button class="surveySkip" data-skip>Keep the best <kbd>Esc</kbd></button>`;
   box.classList.add('on');
+  placeSurvey(box);   // lift to a body-level bottom sheet on a phone
   for (const b of box.querySelectorAll('[data-keep]')) {
     b.addEventListener('click', () => onKeep(draw[+b.dataset.keep]));
   }
