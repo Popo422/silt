@@ -73,6 +73,35 @@ export function renderPlayers({ el, players, human, revealed, colors, T, tuning,
     </div>`).join('');
 }
 
+// Prepare the claims list from raw game state: every owned channel, its owner's
+// marker count and the top challenger's. Ownership is most-markers (ties to most
+// recent dredger), so a rival level or one behind can flip it with a single dredge.
+// Pure read — no engine import, no mutation — so it belongs beside its renderer
+// rather than bloating ui.js's render(). Sorted yours-first, then most-contested.
+export function buildClaims(g, human, T, nodeLabel) {
+  return Object.keys(g.rights)
+    .filter(k => g.rights[k] !== null && g.depth[k] > 0)
+    .map(k => {
+      const owner = g.rights[k];
+      const marks = g.markers[k] ?? {};
+      const ownerN = marks[owner] ?? 0;
+      let rival = null, rivalN = 0;
+      for (const [idx, cnt] of Object.entries(marks)) {
+        if (+idx !== owner && cnt > rivalN) { rivalN = cnt; rival = +idx; }
+      }
+      const [a, b] = k.split('>');
+      return {
+        key: k, owner, ownerN, rival, rivalN,
+        mine: owner === human,
+        ownerName: owner === human ? 'You' : g.players[owner]?.name,
+        rivalName: rival === null ? null : (rival === human ? 'You' : g.players[rival]?.name),
+        label: `${nodeLabel(T, a)}→${nodeLabel(T, b)}`,
+        takeable: rival !== null && rivalN > 0 && rivalN >= ownerN - 1,
+      };
+    })
+    .sort((x, y) => (y.mine - x.mine) || (y.takeable - x.takeable) || (y.rivalN - x.rivalN));
+}
+
 // The dredging-rights tug-of-war, listed. The board shows only who owns each
 // channel now; this shows the marker counts behind that ownership, so a player can
 // read how safe their own claims are and how close a rival's is to flipping. Ties
@@ -132,6 +161,7 @@ export function actionDescriptions(tuning, cost) {
     build:  `Found a new settlement. Costs ${coin(cost)}.`,
     ship:   `Carry up to ${tuning.shipCubesMax} goods downstream to the sea.`,
     survey: `Take ${coin(tuning.surveyCoins)} and draw ${tuning.surveyDraw} contracts, keep 1.`,
+    lakbay: `Journey your chief to open ground and settle. ${coin(tuning.lakbayPerStep)} per step + ${coin(cost)}.`,
   };
 }
 
@@ -155,6 +185,10 @@ export function actionTips(tuning, cost) {
     survey: `Draws ${tuning.surveyDraw} contracts and lets you keep one, plus `
           + `${tuning.surveyCoins} gold. Contracts are most of your score, so a hand `
           + `with nothing in it is usually worth fixing before anything else.`,
+    lakbay: `Walks your chief across the delta — in any direction, over living water — `
+          + `and founds a settlement where it lands, even past a wall of rival towns. `
+          + `Costs ${tuning.lakbayPerStep} gold per step plus the settlement cost. This `
+          + `is your way out when a bad position or a rival wall has boxed you in.`,
   };
 }
 
@@ -170,7 +204,7 @@ export function actionTips(tuning, cost) {
 // full replaces one of them, and finding that out afterwards — by watching the
 // wrong plan resolve — is the worst possible time to learn it.
 export function renderActions({ el, T, desc, tips, want, disabled, target, replacing, icon, ico, esc, onPick }) {
-  el('acts').innerHTML = ['dredge', 'build', 'ship', 'survey'].map(a => `
+  el('acts').innerHTML = ['dredge', 'build', 'ship', 'survey', 'lakbay'].map(a => `
     <button class="act${want && want !== a ? ' dimmed' : ''}"
             data-act="${a}"
             ${disabled || (want && want !== a) ? 'disabled' : ''}
@@ -229,6 +263,7 @@ const AIM_HINTS = {
     ship: 'Pindutín ang iyóng balangay upang maglayág.',
     // Stage two of shipping: an origin is chosen, its routes are lit.
     shipTo: 'Sundán ang mga daán — pindutín ang look na paglálayágan.',
+    lakbay: 'Pindutín ang lugár na pupuntahan ng datu — mas malayò, mas mahál.',
   },
   plain: {
     dredge: 'Click a gold channel to dredge it and claim its toll.',
@@ -236,6 +271,7 @@ const AIM_HINTS = {
     ship: 'Click one of your settlements to ship from it.',
     shipTo: 'Follow the routes — click the bay to ship to. Every channel a route '
       + 'crosses will silt.',
+    lakbay: 'Click where your chief should journey and settle — the farther, the more gold.',
   },
 };
 

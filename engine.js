@@ -69,9 +69,19 @@ export const TUNING = {
   // whose route has usually silted from neglect, so grabbing the premium means
   // dredging your way there. Turns "fix the river" from a chore into a race.
   bayBonusGold: 6,
+  // Lakbay ("journey"): move your Datu across the delta and found a station where
+  // it lands. The delta is three near-parallel rivers with almost no cross-links,
+  // and building is adjacency-only, so a bad opening or a wall of rival stations
+  // can lock you out of whole regions — including bays your contracts name. Lakbay
+  // is the escape valve: the Datu walks channels in EITHER direction (upstream too,
+  // unlike cargo), paying per step, then settles on an empty node. Priced so it is
+  // a genuine reroute, not a free teleport — distance costs, so position still
+  // matters.
+  lakbayPerStep: 2,         // gold per channel stepped along
+  lakbayFoundsFree: false,  // arrival still pays normal buildCost to settle
 };
 
-export const ACTIONS = ['dredge', 'build', 'ship', 'survey'];
+export const ACTIONS = ['dredge', 'build', 'ship', 'survey', 'lakbay'];
 
 // Values raised: contracts must be ~45% of a winning score, not 22%.
 const CONTRACT_POOL = [
@@ -175,6 +185,8 @@ export function newGame(playerCount = 3, seed = 12345) {
     const pick = pickStart(draftPool, { out, inn }, depth);
     draftPool.splice(draftPool.indexOf(pick), 1);
     players[pi].stations.push(pick);
+    // The Datu starts on the drafted settlement — it is where the chief is.
+    players[pi].datu = pick;
   }
   // Whoever drafted first pays for it by resolving last in round 1.
   const firstPlayer = draftOrder[draftOrder.length - 1];
@@ -264,6 +276,46 @@ export function buildTargets(g, p) {
     for (const n of g.inn[s])  if (!owned.has(n) && g.depth[chKey(n, s)] > 0) set.add(n);
   }
   return [...set].filter(id => !MOUTHS.includes(id));
+}
+
+// Where the Datu can journey to and found a new settlement. Unlike Build (only a
+// node touching one you already own) and unlike cargo (strictly seaward), the Datu
+// walks channels in EITHER direction over living water — so a player walled into
+// one arm of the delta can route the chief across to open ground. Returns every
+// reachable EMPTY, non-mouth node with the shortest path to it (the step list),
+// so the caller knows the distance and the caller/UI can animate the walk.
+//
+// A breadth-first flood from the Datu's node; each hop crosses a channel of
+// depth > 0, treated undirected. Nodes already holding a settlement (anyone's) can
+// be walked THROUGH but not settled on — the chief passes a rival's town, it just
+// cannot found there.
+export function lakbayTargets(g, p) {
+  const from = p.datu;
+  if (from == null) return [];
+  const owned = new Set(g.players.flatMap(x => x.stations));
+  const seen = new Set([from]);
+  const queue = [{ node: from, path: [] }];
+  const out = [];
+  while (queue.length) {
+    const { node, path } = queue.shift();
+    // Neighbours in both directions along any living channel.
+    const nbrs = [
+      ...g.out[node].filter(n => g.depth[chKey(node, n)] > 0),
+      ...g.inn[node].filter(n => g.depth[chKey(n, node)] > 0),
+    ];
+    for (const n of nbrs) {
+      if (seen.has(n)) continue;
+      seen.add(n);
+      // The Datu walks the delta, not the open sea: a bay is a dead end it can
+      // reach but never pass through or settle on.
+      if (MOUTHS.includes(n)) continue;
+      const npath = [...path, n];
+      // Reachable empty node = a place the Datu could settle.
+      if (!owned.has(n)) out.push({ node: n, path: npath, steps: npath.length });
+      queue.push({ node: n, path: npath });
+    }
+  }
+  return out;
 }
 
 export function dredgeTargets(g) {
@@ -562,6 +614,47 @@ export function execute(g, pi, action, choice, claimed) {
       }
       g.log.push(`${p.name} surveys, takes ${TUNING.surveyCoins} gold${keptName}`);
       emit(g, 'survey', { pi, coins: TUNING.surveyCoins, drew: drawn.length });
+      break;
+    }
+    case 'lakbay': {
+      // Journey the Datu to an empty node and found a settlement there. choice.node
+      // is the destination; we recompute the path so a stale UI selection cannot
+      // desync from the current water. Two nodes cannot be founded by two players in
+      // one slot — claimed guards it, same as Build.
+      const dest = choice?.node;
+      const opt = lakbayTargets(g, p).find(t => t.node === dest);
+      if (!dest || !opt) {
+        g.log.push(`${p.name} could not journey — nowhere open to settle`);
+        emit(g, 'fizzle', { pi, action, node: dest ?? null, reason: 'no-path' });
+        return;
+      }
+      if (claimed.has(dest)) {
+        g.log.push(`${p.name} cannot settle ${dest} — someone just took it`);
+        emit(g, 'fizzle', { pi, action, node: dest, reason: 'taken' });
+        return;
+      }
+      const walk = opt.steps * TUNING.lakbayPerStep;
+      const found = TUNING.lakbayFoundsFree ? 0 : buildCost(p);
+      const cost = walk + found;
+      if (p.coins < cost) {
+        g.log.push(`${p.name} cannot afford to journey to ${dest} (needs ${cost} gold)`);
+        emit(g, 'fizzle', { pi, action, node: dest, reason: 'coins' });
+        return;
+      }
+      p.coins -= cost;
+      const fromNode = p.datu;
+      p.datu = dest;
+      p.stations.push(dest);
+      claimed.add(dest);
+      const cubesBefore = g.cubes[dest];
+      g.cubes[dest] = Math.min(TUNING.cubesPerNode, g.cubes[dest] + TUNING.buildCubeBonus);
+      g.log.push(`${p.name} journeys ${opt.steps} step${opt.steps === 1 ? '' : 's'} to `
+        + `${dest} and settles — pays ${cost} gold`);
+      // Path carried so the renderer can walk the meeple along it.
+      emit(g, 'lakbay', {
+        pi, from: fromNode, to: dest, path: opt.path, steps: opt.steps,
+        cost, cubesFrom: cubesBefore, cubesTo: g.cubes[dest],
+      });
       break;
     }
   }
