@@ -111,6 +111,10 @@ export function pages(T) {
             <b>${TUNING.tollPerShip}${money}</b>.</li>
           <li>At the end, every claimed channel still at depth <b>2+</b> scores you
             <b>${TUNING.rightsVP}</b> points.</li>
+          <li><b>Connected claims score extra.</b> On top of that, every channel in
+            your <b>largest connected run</b> of claims is worth a further
+            <b>${TUNING.vpNetworkChannel}</b> — so a corridor you own end to end
+            beats the same number of tolls scattered across the delta.</li>
           <li>Dredging a channel someone else holds <b>takes</b> the claim from them.</li>
           <li>If a channel silts out completely, the claim is lost.</li>
         </ul>
@@ -157,7 +161,8 @@ export function pages(T) {
             A stranded one scores <b>nothing</b>.</dd>
           <dt>${X.toll.name}</dt>
           <dd><b>${TUNING.rightsVP}</b> per claimed channel still at depth
-            ${TUNING.rightsDepthMin}+</dd>
+            ${TUNING.rightsDepthMin}+, plus <b>${TUNING.vpNetworkChannel}</b> more
+            for each channel in your largest connected run of claims</dd>
           <dt>${X.coins.name}</dt>
           <dd>1 point per <b>${TUNING.vpPerCoins}</b></dd>
           <dt class="neg">Neglect</dt>

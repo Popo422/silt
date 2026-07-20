@@ -119,9 +119,13 @@ export const STEPS = [
   {
     id: 'commit',
     title: () => 'Lock it in',
-    body: () => 'Press commit. Everyone reveals at once and resolves in seat order — '
+    body: (T) => 'Press commit. Everyone reveals at once and resolves in seat order — '
         + 'you cannot change your mind partway through, which is the whole tension '
-        + 'of the game. You will be asked to click the board to aim each action.',
+        + 'of the game. You will be asked to click the board to aim each action. '
+        + `One thing to know before you do: both actions resolve first, and silt `
+        + `settles only after both — so you cannot ${actName(T, 'ship')} a channel `
+        + `and ${actName(T, 'dredge')} it back the same round. The repair always `
+        + `lands a turn behind the damage.`,
     highlight: () => ({ kind: 'ui', sel: '#go' }),
     check: (g, ui) => ui.roundsPlayed >= 1,
     hint: () => 'Press "Commit & resolve", then follow the prompts on the board.',
@@ -132,7 +136,10 @@ export const STEPS = [
     title: () => 'Look at what that cost',
     body: (T) => `The channels you just used are shallower. At `
         + `${T.terms.depth.name} 1 a channel is one trip from dying, and a dead one `
-        + `is dry cracked mud that nobody can reopen — not you, not anyone.`,
+        + `is dry cracked mud that nobody can reopen — not you, not anyone. `
+        + `The small dot on your ${T.terms.station.name.toLowerCase()} tracks this `
+        + `for you: green while it still reaches the sea, amber when its route is one `
+        + `trip from closing, red once it is cut off and scoring nothing.`,
     highlight: () => ({ kind: 'legend' }),
     check: null,
   },
