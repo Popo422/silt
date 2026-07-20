@@ -17,6 +17,18 @@ const open = async (page) => {
   return errors;
 };
 
+// Commit the program and clear whatever prompt it raises so the round actually
+// advances. Survey opens a keep-1-of-3 picker now, so a bare commit() leaves
+// resolution parked on the human — the round never ticks over. autoResolve()
+// dismisses the picker (keeping the best card) or resolves a board target.
+async function commitRound(page) {
+  await page.evaluate(() => window.SILT.commit());
+  for (let i = 0; i < 4; i++) {
+    if (!await page.evaluate(() => window.SILT.pending())) break;
+    await page.evaluate(() => window.SILT.autoResolve());
+  }
+}
+
 test.describe('rulebook', () => {
   test('opens from the menu and from a live game', async ({ page }) => {
     await open(page);
@@ -112,7 +124,7 @@ test.describe('rulebook', () => {
     await page.locator('#btnRules').click();
     await page.locator('#bkClose').click();
     await page.evaluate(() => window.SILT.program('survey', 'survey'));
-    await page.evaluate(() => window.SILT.commit());
+    await commitRound(page);
     await expect(page.locator('#rd')).toContainText('2 / 8');
   });
 });
@@ -183,7 +195,7 @@ test.describe('theme', () => {
     await open(page);
     await page.locator('#btnPlay').click();
     await page.evaluate(() => window.SILT.program('survey', 'survey'));
-    await page.evaluate(() => window.SILT.commit());
+    await commitRound(page);
     await expect(page.locator('#log')).toContainText('surveys');
   });
 

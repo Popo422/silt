@@ -7,7 +7,7 @@
 // it testable and keeps the dependency pointing one way.
 
 import { NODES, MOUTHS, CHANNELS, chKey, NODE_BY_ID } from './graph.js';
-import { buildTargets, shipOptions, TUNING } from './engine.js';
+import { buildTargets, shipOptions, canReachMouth, TUNING } from './engine.js';
 import { nodeName } from './theme.js';
 import { drawBayTrack } from './bays.js';
 import { el, use } from './svg.js';
@@ -16,6 +16,29 @@ export { el, use } from './svg.js';
 
 export const depthColor = (d) =>
   d === 0 ? 'var(--dead)' : ['', 'var(--water1)', 'var(--water2)', 'var(--water3)'][d];
+
+// Route health of a single settlement, read the way final scoring reads it. A
+// station scores vpLiveStation only if it still reaches the sea at liveDepthMin
+// — so this classifies "is that +2 safe, at risk, or already lost", which is the
+// one thing about a settlement you cannot see on the board until the game ends.
+//
+//   'live'     — a route survives one more shipment: every path found at the next
+//                depth up still reaches the sea, so a single silt cannot cut it.
+//   'fragile'  — a route exists but only through a channel one trip from dying;
+//                ship through it and the settlement goes dark. The warning state.
+//   'cut'      — no navigable route to any bay right now: scoring 0 and, if a dead
+//                channel touches it, paying the silt penalty.
+//
+// Exported so a test can pin the boundaries against canReachMouth rather than
+// against a pixel. Pure — reads depth, mutates nothing.
+export function routeStatus(g, from) {
+  if (!canReachMouth(g, from, TUNING.liveDepthMin)) return 'cut';
+  // A route that also survives at the next depth up cannot be severed by one silt,
+  // because that silt drops each used channel to still-navigable depth. Capped at
+  // maxDepth so a game tuned to liveDepthMin === maxDepth never asks for depth+1.
+  const safeDepth = Math.min(TUNING.liveDepthMin + 1, TUNING.maxDepth);
+  return canReachMouth(g, from, safeDepth) ? 'live' : 'fragile';
+}
 
 // Water textures by depth — the components a printed edition would have. Depth is
 // the core read of the game, so the four states must differ at a glance rather
@@ -452,6 +475,71 @@ export function drawBoard(ctx) {
       .some(k => g.depth[k] === 0);
     if (anyDead && own !== undefined) {
       grp.appendChild(use(`#ic-${ico('dead')}`, n.x + 3.2, n.y + 2.6, 2.4, 'var(--dead)'));
+    }
+
+    // Route-health dot for the human's own settlements. A settlement scores
+    // vpLiveStation only while it reaches the sea, and that reward — plus the
+    // moment a route is one shipment from dying — is otherwise invisible until
+    // final scoring. This surfaces it while the player can still act on it.
+    //
+    // Colour carries the read; a shape difference (filled / ringed / hollow) is
+    // the accessible backstop, because colour alone fails a colourblind player —
+    // the same rule the "your piece" marker follows a few lines up. Only the
+    // human's stations get it: it is a decision aid for your turn, not a readout
+    // of everyone's board.
+    if (!isMouth && own === HUMAN) {
+      const st = routeStatus(g, n.id);
+      const dx = n.x - 3.2, dy = n.y + 2.6;      // mirror of the dead-channel marker
+      const mouthTerm = T.terms.mouth.name.toLowerCase();
+      const meta = {
+        live: {
+          color: 'var(--good)',
+          title: 'Route open',
+          tip: `This ${T.terms.station.name.toLowerCase()} reaches the `
+            + `${mouthTerm} by water deep enough to survive another shipment. `
+            + `It scores you ${TUNING.vpLiveStation} points at the end while the `
+            + `route stays open.`,
+        },
+        fragile: {
+          color: 'var(--warn)',
+          title: 'Route fragile',
+          tip: `This ${T.terms.station.name.toLowerCase()} still reaches the `
+            + `${mouthTerm}, but only through a channel one trip from dying. `
+            + `Ship through it and the route closes — costing the `
+            + `${TUNING.vpLiveStation}-point bonus. ${T.actions.dredge.name} first, `
+            + `or route around it.`,
+        },
+        cut: {
+          color: 'var(--bad)',
+          title: 'Route cut off',
+          tip: `This ${T.terms.station.name.toLowerCase()} cannot reach any `
+            + `${mouthTerm}: it ships nothing and scores no live-route points. `
+            + `Only a channel dredged back above depth 0 can reconnect it — a dead `
+            + `one never reopens.`,
+        },
+      }[st];
+      const dot = el('g', {
+        class: 'routeDot', 'data-route': st,
+        'data-tip-title': meta.title, 'data-tip': meta.tip,
+      });
+      // Dark disc behind, so the state colour holds against busy water.
+      dot.appendChild(el('circle', { cx: dx, cy: dy, r: 1.15, fill: 'rgba(20,16,10,.85)' }));
+      if (st === 'cut') {
+        // Hollow ring + slash: a broken link, legible without colour.
+        dot.appendChild(el('circle', { cx: dx, cy: dy, r: 0.9, fill: 'none',
+          stroke: meta.color, 'stroke-width': 0.4 }));
+        dot.appendChild(el('line', { x1: dx - 0.7, y1: dy + 0.7, x2: dx + 0.7, y2: dy - 0.7,
+          stroke: meta.color, 'stroke-width': 0.4 }));
+      } else if (st === 'fragile') {
+        // Filled dot with a warning ring around it.
+        dot.appendChild(el('circle', { cx: dx, cy: dy, r: 0.62, fill: meta.color }));
+        dot.appendChild(el('circle', { cx: dx, cy: dy, r: 1, fill: 'none',
+          stroke: meta.color, 'stroke-width': 0.28, opacity: 0.85 }));
+      } else {
+        // Solid filled dot: the calm, healthy state.
+        dot.appendChild(el('circle', { cx: dx, cy: dy, r: 0.9, fill: meta.color }));
+      }
+      grp.appendChild(dot);
     }
 
     const label = el('text', {

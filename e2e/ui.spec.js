@@ -19,6 +19,18 @@ const open = async (page) => {
   return errors;
 };
 
+// Commit the program and clear whatever prompt it raises so the round advances.
+// Survey opens a keep-1-of-3 picker, so a bare commit() parks resolution on the
+// human and the round never ticks over — autoResolve() dismisses the picker
+// (keeping the best) or resolves a board target, the same idiom game.spec uses.
+async function commitRound(page) {
+  await page.evaluate(() => window.SILT.commit());
+  for (let i = 0; i < 4; i++) {
+    if (!await page.evaluate(() => window.SILT.pending())) break;
+    await page.evaluate(() => window.SILT.autoResolve());
+  }
+}
+
 test.describe('menu', () => {
   test('opens on the menu, not the board', async ({ page }) => {
     await open(page);
@@ -164,14 +176,17 @@ test.describe('assets', () => {
     await expect(page.locator('#svg use[href="#ic-mouth"]')).toHaveCount(3);
   });
 
-  test('renders a dock for every owned station', async ({ page }) => {
+  test('renders a piece for every owned station', async ({ page }) => {
     await open(page);
     await page.locator('#btnPlay').click();
-    const [docks, stations] = await Promise.all([
-      page.locator('#svg use[href="#ic-station"]').count(),
-      page.evaluate(() => window.SILT.state().players.reduce((s, p) => s + p.stations.length, 0)),
-    ]);
-    expect(docks).toBe(stations);
+    // Stations are painted pieces now (piece-p0..p3 PNGs), not #ic-station sprites.
+    // The contract is "one visible marker per owned station", so count the piece
+    // images by their href rather than pinning to the old sprite id.
+    const pieces = await page.locator('#svg image')
+      .evaluateAll(els => els.filter(e => /piece-p\d/.test(e.getAttribute('href') || '')).length);
+    const stations = await page.evaluate(() =>
+      window.SILT.state().players.reduce((s, p) => s + p.stations.length, 0));
+    expect(pieces).toBe(stations);
   });
 });
 
@@ -252,7 +267,7 @@ test.describe('tutorial', () => {
     await expect(page.locator('#tut')).toBeHidden();
     // and the game is still playable afterwards
     await page.evaluate(() => window.SILT.program('survey', 'survey'));
-    await page.evaluate(() => window.SILT.commit());
+    await commitRound(page);
     await expect(page.locator('#rd')).toHaveText('Round 2 / 8');
   });
 
@@ -417,7 +432,7 @@ test.describe('interaction edge cases', () => {
     await page.locator('#btnPlay').click();
     for (let r = 0; r < 5; r++) {
       await page.evaluate(() => window.SILT.program('survey', 'survey'));
-      await page.evaluate(() => window.SILT.commit());
+      await commitRound(page);
     }
     await expect(page.locator('#ov')).toHaveClass(/on/);
     await page.locator('#btnAgain').click();
@@ -511,6 +526,12 @@ test.describe('effects', () => {
     await page.locator('[data-act="survey"]').click();
     await page.locator('[data-act="survey"]').click();
     await page.locator('#go').click();
+    // Survey raises a keep-1 picker; dismiss it so the round can finish. Kept as a
+    // card click (not the API) to stay a real UI path — the test is about what the
+    // UI draws while speed is off.
+    for (let i = 0; i < 2 && await page.locator('#survey.on').isVisible(); i++) {
+      await page.locator('.surveyCard').first().click();
+    }
     await page.waitForFunction(() => (window.SILT.state()?.round ?? 0) > 1, null, { timeout: 10000 });
     expect(await page.evaluate(() => window.SILT.fxCount()),
       'effects were drawn while speed was off').toBe(0);
@@ -669,7 +690,18 @@ test.describe('pan and zoom', () => {
     await page.locator('#btnPlay').click();
     await page.evaluate(() => window.SILT.program('ship', 'survey'));
     await page.evaluate(() => window.SILT.commit());
-    await page.locator('#svg [data-hit-node]').first().click({ force: true });
+    // Shipping is two-stage now: click an origin settlement, then the destination
+    // bay it lights up. A single-bay origin collapses to one click, so only click
+    // the bay if a second stage actually appears. The point of the test — that a
+    // plain click resolves, unlike the drag above — still holds end to end.
+    await page.locator('#svg [data-hit-kind="ship"]').first().click({ force: true });
+    const dest = page.locator('#svg [data-hit-kind="shipTo"]');
+    if (await dest.count()) await dest.first().click({ force: true });
+    // Ship resolves into slot 2 (survey), which raises its own keep-1 picker;
+    // clearing it leaves nothing pending, which is the resolved state under test.
+    if (await page.locator('#survey.on').isVisible()) {
+      await page.locator('.surveyCard').first().click();
+    }
     expect(await page.evaluate(() => window.SILT.pending())).toBe(null);
   });
 

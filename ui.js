@@ -432,6 +432,23 @@ function render() {
     : filled === 1 ? (T.id === 'anod' ? 'isa pa' : 'one more')
     : (T.id === 'anod' ? 'handa na' : 'ready');
 
+  // The standing reminder of the round's shape: both actions resolve in order,
+  // and silt only settles after both. This is the rule that makes "ship then
+  // repair the same river" impossible, and nothing on the programming bar said
+  // so — you learned it by the dredge target refusing to light. Uses the theme's
+  // own words for the two actions; hidden while aiming so the board has focus.
+  const orderHint = $('orderHint');
+  orderHint.classList.toggle('hide', !!pendingAction);
+  if (!pendingAction) {
+    const shipW = T.actions.ship.name, dredgeW = T.actions.dredge.name;
+    orderHint.innerHTML = T.id === 'anod'
+      ? `Parehong kikilos ayon sa pagkakasunod. Ang <b>anod ay dumarating pagkatapos `
+        + `ng dalawa</b> — hindi mo mabubuksan sa ${dredgeW} ang sapàng gagamitin mo `
+        + `sa ${shipW} ngayong taon.`
+      : `Both actions resolve in the order you set. <b>Silt settles after both</b> — `
+        + `you can't ${shipW} a river and ${dredgeW} it back the same round.`;
+  }
+
   // "8g · 1b · 0✓" was unreadable without a key. Same numbers, but each is
   // labelled and carries a tooltip naming what it counts.
   //

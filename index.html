@@ -170,6 +170,12 @@
   .barLead{flex:0 0 auto;display:flex;flex-direction:column;gap:5px}
   .barLead h3{margin:0;font-size:10px;letter-spacing:.14em;text-transform:uppercase;
     color:var(--dim);font-weight:600}
+  /* Persistent order/timing reminder. Muted so it reads as a standing note, not a
+     prompt; the "after both" clause is warm-tinted because that is the part that
+     surprises people. Hidden once the board takes over for aiming. */
+  .orderHint{font-size:10.5px;line-height:1.35;color:var(--dim2);max-width:230px}
+  .orderHint b{color:var(--warn);font-weight:600}
+  .orderHint.hide{display:none}
   .barSlots{display:flex;gap:9px;flex:0 0 auto}
   .barSlots .slot{width:104px;height:62px}
   /* The four actions get the width they were starved of in a 352px column. */
@@ -987,6 +993,10 @@
  <div id="bar">
    <div class="barLead">
      <h3 id="hProgram">Your program</h3>
+     <!-- The one rule new players trip on: your two actions lock in and resolve
+          in order, and silt only settles AFTER both. So you cannot ship a river
+          and repair it the same turn. This line says so where you program. -->
+     <div id="orderHint" class="orderHint"></div>
      <div class="barSlots">
        <div class="slot" id="s0" data-slot="0"><div class="n">SLOT 1</div><div class="a">—</div></div>
        <div class="slot" id="s1" data-slot="1"><div class="n">SLOT 2</div><div class="a">—</div></div>

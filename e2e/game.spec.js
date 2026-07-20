@@ -79,6 +79,50 @@ test.describe('board rendering', () => {
   });
 });
 
+test.describe('route-health dots', () => {
+  // The dot tells you, during play, whether a settlement still reaches the sea —
+  // the thing final scoring rewards (vpLiveStation) and otherwise invisible until
+  // the game ends. Contract: one dot per HUMAN station, three states driven by
+  // depth. program(null,null) forces a repaint after mutating depth in place.
+  const repaint = (page) => page.evaluate(() => window.SILT.program(null, null));
+
+  test('one dot per human station, none for opponents', async ({ page }) => {
+    await boot(page);
+    const { human, all } = await page.evaluate(() => {
+      const g = window.SILT.state();
+      return { human: g.players[0].stations.length,
+               all: g.players.reduce((s, p) => s + p.stations.length, 0) };
+    });
+    expect(all).toBeGreaterThan(human);           // opponents have stations too
+    await expect(page.locator('.routeDot')).toHaveCount(human);
+  });
+
+  test('reads live, fragile, then cut as the water dies', async ({ page }) => {
+    await boot(page);
+    const statuses = () => page.locator('.routeDot')
+      .evaluateAll(els => els.map(e => e.dataset.route));
+
+    // Fresh board: every channel at max depth, so every route survives a shipment.
+    expect((await statuses()).every(s => s === 'live')).toBe(true);
+
+    // Everything at depth 1: a route still exists, but only through fragile water.
+    await page.evaluate(() => {
+      const g = window.SILT.state();
+      for (const k of Object.keys(g.depth)) g.depth[k] = 1;
+    });
+    await repaint(page);
+    expect((await statuses()).every(s => s === 'fragile')).toBe(true);
+
+    // Every channel dead: no route to any bay.
+    await page.evaluate(() => {
+      const g = window.SILT.state();
+      for (const k of Object.keys(g.depth)) g.depth[k] = 0;
+    });
+    await repaint(page);
+    expect((await statuses()).every(s => s === 'cut')).toBe(true);
+  });
+});
+
 test.describe('programming UI', () => {
   test('commit is disabled until both slots are filled', async ({ page }) => {
     await boot(page);
@@ -87,6 +131,19 @@ test.describe('programming UI', () => {
     await expect(page.locator('#go')).toBeDisabled();
     await page.locator('[data-act="survey"]').click();
     await expect(page.locator('#go')).toBeEnabled();
+  });
+
+  // The order/timing reminder: it must state that silt lands after both actions —
+  // the rule that makes same-turn ship-then-repair impossible — and get out of the
+  // way once the board takes over for aiming.
+  test('states that silt settles after both actions, hides while aiming', async ({ page }) => {
+    await boot(page);
+    await expect(page.locator('#orderHint')).toContainText(/silt settles after both/i);
+    await page.evaluate(() => window.SILT.program('ship', 'dredge'));
+    await page.evaluate(() => window.SILT.commit());
+    if (await page.evaluate(() => window.SILT.pending())) {
+      await expect(page.locator('#orderHint')).toHaveClass(/hide/);
+    }
   });
 
   test('fills slot 1 then slot 2 in order', async ({ page }) => {
