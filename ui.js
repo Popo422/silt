@@ -122,8 +122,8 @@ const artImage = (name, x, y, size) => el('image', {
 // ---------------------------------------------------------------- menu
 
 function buildMenu() {
-  // Default rival is the clever search bot (ladder bots stay in the dropdown for an easier game).
-  config = { players: 3, rounds: 8, bots: ['mcts', 'balanced', 'expander'] };
+  // Every opponent is the clever search bot by default (ladder bots stay in the dropdown for an easier game).
+  config = { players: 3, rounds: 8, bots: ['mcts', 'mcts', 'mcts'] };
 
   const syncBots = () => {
     const n = config.players - 1;
@@ -153,7 +153,7 @@ function buildMenu() {
     b.addEventListener('click', () => {
       config.players = +b.dataset.pc;
       document.querySelectorAll('[data-pc]').forEach(x => x.classList.toggle('on', x === b));
-      while (config.bots.length < config.players - 1) config.bots.push('balanced');
+      while (config.bots.length < config.players - 1) config.bots.push('mcts');
       syncBots();
     });
   }
