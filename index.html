@@ -204,6 +204,8 @@
     #bar .act .d{display:none}
   }
   #game.hide{display:none}
+  /* Mobile-only tab bar: hidden on desktop, where the whole sidebar is visible. */
+  #mtabs{display:none}
   /* Aged-paper surface under the delta. This is the change that answers "why is it
      so gloomy" — a warm textured ground rather than flat near-black. The texture is
      held well back (low opacity, darkened via multiply) so it reads as a surface the
@@ -760,9 +762,38 @@
     /* The board is the thing you read to plan, so give it the lion's share of a
        phone screen — 46dvh left nodes and cube tracks unreadably small. Pinch to
        get in close on a specific channel; the controls scroll below. */
-    #board{flex:0 0 auto;height:60dvh;min-height:300px}
+    /* Tabbed layout: board on top, ONE panel below chosen by the tab bar, then the
+       tab bar pinned at the very bottom. Each info group gets its own space instead
+       of one long scroll, and the board stays visible while you read any of them. */
+    #game{padding-bottom:52px}          /* room for the fixed tab bar */
+    #board{flex:0 0 auto;height:52dvh;min-height:280px}
     aside{width:100%;border-left:none;border-top:1px solid var(--line);
-      flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+      flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+      display:flex;flex-direction:column}
+    /* The header (title/round/buttons) always shows; the panes swap by tab. */
+    aside>.pane,aside>#claimsPane,aside>#legendPane,aside>.log{display:none}
+    /* Show only the panes whose data-mtab matches the active tab. #bar (the Play
+       tab) is a sibling of #top, handled below. */
+    #game.mtab-contracts aside [data-mtab="contracts"],
+    #game.mtab-table     aside [data-mtab="table"],
+    #game.mtab-log       aside [data-mtab="log"]{display:block}
+    #game.mtab-log .log{flex:1 1 auto;max-height:none}
+    /* Play tab: show the action bar, hide the sidebar body entirely (just header). */
+    #bar{display:none}
+    #game.mtab-play #bar{display:flex}
+    #game.mtab-play aside{flex:0 0 auto}          /* header only, no growing body */
+    #game:not(.mtab-play) #top{flex:1 1 auto}     /* panel fills the space the bar left */
+    /* The tab bar itself: fixed, full-width, thumb-height, safe-area aware. */
+    #mtabs{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:70;
+      background:var(--panel);border-top:1px solid var(--line);
+      padding-bottom:env(safe-area-inset-bottom)}
+    #mtabs button{flex:1;min-height:52px;background:none;border:none;color:var(--dim);
+      font:inherit;font-size:12px;font-weight:600;letter-spacing:.04em;cursor:pointer;
+      border-top:2px solid transparent;position:relative}
+    #mtabs button.on{color:var(--gold);border-top-color:var(--gold);
+      background:color-mix(in srgb,var(--gold) 8%,transparent)}
+    .tabBadge:not(:empty){position:absolute;top:7px;margin-left:3px;font-size:9px;
+      background:var(--gold);color:#2a2113;border-radius:8px;padding:0 5px;font-weight:700}
     /* Bar wraps: slots and commit on one line, the four actions below. */
     #bar{flex-wrap:wrap;gap:9px;padding:9px 11px;
       padding-bottom:max(9px,env(safe-area-inset-bottom))}
@@ -1036,7 +1067,7 @@
          contract line. Program first and dominant; everything else is reference. -->
 
     <!-- WHAT YOU ARE WORKING TOWARD -->
-    <div class="pane">
+    <div class="pane" data-mtab="contracts">
       <div class="paneHead">
         <h3 id="hContracts">Contracts</h3>
         <span class="count" id="ctCount"></span>
@@ -1048,7 +1079,7 @@
     </div>
 
     <!-- WHO ELSE IS AT THE TABLE -->
-    <div class="pane">
+    <div class="pane" data-mtab="table">
       <div class="paneHead"><h3 id="hPlayers">Players</h3></div>
       <div id="pls"></div>
     </div>
@@ -1056,14 +1087,14 @@
     <!-- CLAIMED CHANNELS — the dredging-rights tug-of-war. The board shows only
          who owns each channel now; this shows the marker counts, so you can read
          how safe your claims are and how close a rival's is to flipping. -->
-    <div class="pane" id="claimsPane">
+    <div class="pane" id="claimsPane" data-mtab="table">
       <div class="paneHead"><h3 id="hClaims">Claimed channels</h3></div>
       <div id="claims"></div>
     </div>
 
     <!-- Reference, not per-turn information. Collapsed by default: it taught you
          the depth colours once and then took up permanent room. -->
-    <details class="pane" id="legendPane">
+    <details class="pane" id="legendPane" data-mtab="table">
       <summary><h3 id="hWater">The water</h3></summary>
       <div class="legend">
         <span><i style="background:var(--water3)"></i><span id="legDeep">deep 3</span></span>
@@ -1073,14 +1104,14 @@
       </div>
     </details>
 
-    <div class="log" id="log"></div>
+    <div class="log" id="log" data-mtab="log"></div>
   </aside>
  </div>
 
  <!-- ACTION BAR — everything you press, across the full width.
       Slots on the left, the four actions in the middle where they have room to be
-      real buttons, commit on the right. -->
- <div id="bar">
+      real buttons, commit on the right. On mobile this is the "Play" tab. -->
+ <div id="bar" data-mtab="play">
    <div class="barLead">
      <h3 id="hProgram">Your program</h3>
      <!-- The one rule new players trip on: your two actions lock in and resolve
@@ -1098,6 +1129,16 @@
      <button id="go" disabled>Commit &amp; resolve</button>
    </div>
  </div>
+
+ <!-- Mobile tab bar: switches what the bottom of the screen shows, so each info
+      group gets its own space instead of one long scroll. Hidden on desktop,
+      where every pane is visible at once in the sidebar. -->
+ <nav id="mtabs" aria-label="Panel">
+   <button data-tab="play" class="on">Play</button>
+   <button data-tab="contracts">Contracts<span class="tabBadge" id="tabCt"></span></button>
+   <button data-tab="table">Table</button>
+   <button data-tab="log">Log</button>
+ </nav>
 </div>
 
 <div id="book">

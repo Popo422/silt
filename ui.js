@@ -29,6 +29,7 @@ const $ = (id) => document.getElementById(id);
 const BOT_KEYS = ['balanced', 'tollkeeper', 'steward', 'expander', 'turtle', 'defector'];
 
 let g, program, picking, pendingAction, seed, queue, tut, config;
+let mtab = 'play';            // active mobile bottom-panel tab (see setTab)
 // Two-stage shipping. Clicking a settlement used to resolve immediately, sending
 // the goods down whichever route paid most — you never chose the bay or the
 // path. Now the first click selects the origin and lights up every route from
@@ -176,6 +177,7 @@ function buildMenu() {
   $('btnSpeed').addEventListener('click', cycleSpeed);
   wireBook();
   wireBoard();
+  wireTabs();
   createTips();
   // Pan/zoom knows nothing about the game; the two places it needs game state
   // are injected as predicates so the dependency points one way only.
@@ -333,6 +335,7 @@ function resetGame(players, s) {
   // Fit AFTER the game is shown: reset() measures the board container, and a hidden
   // board has no size, so fitting it here would frame to a 0×0 rect and land wrong.
   panzoom?.reset();   // a new game should not inherit the last one's pan
+  setTab('play');     // a new game opens on the tab you act from
   tut = createTutorial();
 }
 
@@ -428,6 +431,11 @@ function render() {
   // repair the same river" impossible, and nothing on the programming bar said
   // so — you learned it by the dredge target refusing to light. Uses the theme's
   // own words for the two actions; hidden while aiming so the board has focus.
+  // Aiming a target needs the board and the action context — if the player is off
+  // on the Contracts/Table/Log tab when a target prompt appears, pull them to Play
+  // so they are not left staring at a panel with no idea the game wants a click.
+  if (pendingAction && mtab !== 'play') setTab('play');
+
   const orderHint = $('orderHint');
   orderHint.classList.toggle('hide', !!pendingAction);
   if (!pendingAction) {
@@ -705,6 +713,26 @@ async function step() {
 // handlers were being destroyed between the pointerdown and the click — a real
 // click could land on a detached node and silently do nothing, which hung the
 // game mid-round. One listener on a parent that never gets replaced fixes it.
+// Mobile bottom-panel tabs. The board stays on top; this switches which pane the
+// bottom of the screen shows (Play / Contracts / Table / Log), so each group gets
+// its own space instead of one long scroll. Inert on desktop, where #mtabs is
+// display:none and every pane is visible at once — the class is harmless there.
+// `mtab` is declared with the other module state at the top so render() (far above
+// this) can read it without a use-before-define.
+function setTab(tab) {
+  mtab = tab;
+  const game = $('game');
+  game.classList.remove('mtab-play', 'mtab-contracts', 'mtab-table', 'mtab-log');
+  game.classList.add(`mtab-${tab}`);
+  for (const b of document.querySelectorAll('#mtabs button'))
+    b.classList.toggle('on', b.dataset.tab === tab);
+}
+function wireTabs() {
+  for (const b of document.querySelectorAll('#mtabs button'))
+    b.addEventListener('click', () => setTab(b.dataset.tab));
+  setTab('play');
+}
+
 function wireBoard() {
   $('svg').addEventListener('click', (e) => {
     // A pan ends in a click on whatever the cursor landed on. Without this, a
