@@ -106,7 +106,7 @@ function ensureDefs(svg) {
 //     artImage, ico, nodeLabel, ART }
 export function drawBoard(ctx) {
   const { svg, g, human: HUMAN, playerColors: PC, theme: T,
-          pendingAction, highlight: hl, artImage, ico, nodeLabel, ART } = ctx;
+          pendingAction, highlight: hl, shipRoutes: routes, artImage, ico, nodeLabel, ART } = ctx;
   svg.innerHTML = '';
   ensureDefs(svg);
   // Crosshair while aiming so the board reads as "click a target", not "drag me".
@@ -116,8 +116,15 @@ export function drawBoard(ctx) {
 
   const btargets = pendingAction === 'build'
     ? new Set(buildTargets(g, g.players[HUMAN])) : new Set();
-  const sfrom = pendingAction === 'ship'
+  // Stage one of shipping: the settlements you can send from. Suppressed once one
+  // is picked (routes set), so the board switches from "choose an origin" to
+  // "choose a destination" rather than showing both at once.
+  const sfrom = (pendingAction === 'ship' && !routes)
     ? new Set(shipOptions(g, g.players[HUMAN]).map(o => o.from)) : new Set();
+  // Stage two: the bays the selected origin can reach, and the channels on the
+  // way. Drawn as bright routes so you can see exactly what each choice ships
+  // through — and therefore what each choice will silt.
+  const destMouths = new Set((routes ?? []).map(r => r.mouth));
 
   // --- channels
   const tolls = [];
@@ -215,17 +222,21 @@ export function drawBoard(ctx) {
   }
 
   // --- ship route preview
-  if (pendingAction === 'ship') {
-    for (const o of shipOptions(g, g.players[HUMAN])) {
+  //
+  // Only once an origin is chosen, and only that origin's routes. The old preview
+  // drew every route from every settlement the instant you armed a ship — a faint
+  // gold cobweb over the whole board that told you nothing about the choice you
+  // were about to make. Now the routes appear on the second stage, bright, so you
+  // can trace each one to its bay and see which channels it will wear down.
+  if (routes) {
+    for (const o of routes) {
       for (const k of o.path) {
         const [a, b] = k.split('>');
-        // Follow the channel's own curve, or the preview cuts across the meander
-        // and points at water that is not on the route.
         const [A, B] = insetEnds(NODE_BY_ID[a], NODE_BY_ID[b], insetRadius(a), insetRadius(b));
         const pd = channelPath(A, B, k);
         svg.appendChild(el('path', { d: pd, fill: 'none',
-          stroke: 'var(--gold)', 'stroke-width': 0.4, opacity: .55,
-          'stroke-dasharray': '.7 .8' }));
+          stroke: 'var(--gold)', 'stroke-width': 0.7, opacity: .8,
+          'stroke-linecap': 'round', 'stroke-dasharray': '1.1 0.9', class: 'shipRoute' }));
       }
     }
   }
@@ -449,15 +460,17 @@ export function drawBoard(ctx) {
 
     if (isMouth) drawBayTrack({ grp, n, g, PC, HUMAN, T, nodeLabel });
 
-    const interactive = btargets.has(n.id) || sfrom.has(n.id);
+    const interactive = btargets.has(n.id) || sfrom.has(n.id) || destMouths.has(n.id);
     if (interactive) {
       grp.style.cursor = 'pointer';
+      const kind = btargets.has(n.id) ? 'build'
+        : destMouths.has(n.id) ? 'shipTo'   // stage two: a chosen destination bay
+        : 'ship';                           // stage one: a settlement to send from
       // Fingers are much bigger than a 2.7-unit node: add a generous invisible
       // hit area so tapping near the node still works.
       grp.appendChild(el('circle', {
         cx: n.x, cy: n.y, r: 6, fill: 'transparent', 'data-hit-node': n.id,
-        'data-hit-kind': btargets.has(n.id) ? 'build' : 'ship',
-        'pointer-events': 'fill',
+        'data-hit-kind': kind, 'pointer-events': 'fill',
       }));
     }
     svg.appendChild(grp);

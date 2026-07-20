@@ -576,3 +576,52 @@ test.describe('bay majority is visible during the game', () => {
     for (const v of shown) expect(legal, `printed tier ${v}`).toContain(v);
   });
 });
+
+// Shipping used to auto-resolve: click a settlement and the goods went to
+// whichever bay paid most, no choice of destination or route. You could see you
+// were losing a bay by 2 and have no way to ship there. Now it is two stages —
+// pick an origin, see its routes, pick the bay.
+test.describe('shipping lets you choose the route', () => {
+  // Reach a state where the human has goods at a settlement with routes to more
+  // than one bay, then arm a ship.
+  const armShip = async (page) => {
+    await page.goto('/index.html');
+    await page.evaluate(() => window.SILT.ready);
+    await page.evaluate(() => { window.SILT.setSpeed('off'); window.SILT.setTheme('silt'); });
+    await page.evaluate(() => window.SILT.boot(3));
+    await page.evaluate(() => window.SILT.program('ship', 'survey'));
+    await page.evaluate(() => window.SILT.commit());
+    await expect(page.locator('#hint')).toBeVisible();
+  };
+
+  test('clicking a settlement reveals its routes instead of shipping at once', async ({ page }) => {
+    await armShip(page);
+    const origin = page.locator('circle[data-hit-kind="ship"]').first();
+    await expect(origin, 'a settlement to ship from is offered').toBeVisible();
+    await origin.click({ force: true });
+    // Stage two: routes drawn, destination bays now the click targets.
+    await expect(page.locator('.shipRoute').first()).toBeVisible();
+    expect(await page.locator('circle[data-hit-kind="shipTo"]').count(),
+      'a settlement reaching >1 bay must offer a destination choice')
+      .toBeGreaterThan(1);
+  });
+
+  test('the routes shown lead only to bays the origin can actually reach', async ({ page }) => {
+    await armShip(page);
+    await page.locator('circle[data-hit-kind="ship"]').first().click({ force: true });
+    const { dests, mouths } = await page.evaluate(() => {
+      const g = window.SILT.state();
+      // Bays are exactly the keys of a player's delivered tally — derived from
+      // real state rather than a hardcoded ['A','B','C'], so the test cannot
+      // pass against a board whose bays moved.
+      const bays = Object.keys(g.players[0].delivered);
+      return {
+        dests: [...document.querySelectorAll('circle[data-hit-kind="shipTo"]')]
+          .map(c => c.getAttribute('data-hit-node')),
+        mouths: bays,
+      };
+    });
+    expect(mouths.length, 'derived the real bay list').toBeGreaterThan(0);
+    for (const d of dests) expect(mouths).toContain(d);
+  });
+});

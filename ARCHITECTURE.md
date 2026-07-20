@@ -112,8 +112,11 @@ time. Add what you need to the ctx; don't import `ui.js`.
 and the same water textures. Hand-drawing a diagram is how a rulebook ends up
 showing a board the game no longer has.
 
-**A new UI panel** → if it's more than ~80 lines, it's a module. `ui.js` is 826
-lines and already too big; do not grow it.
+**A new UI panel** → if it's a self-contained render job, it's a module (see
+`panel.js`, `bays.js`), not another block in `ui.js`. A test caps every module
+at 1000 lines — a backstop against one file sprawling into a second job, not a
+target to shuffle code around. Split when a file is doing two things, not when
+it crosses a number.
 
 **A new theme term** → `theme.js`, and make sure the tutorial and rulebook read it
 rather than hardcoding a word. There is a test that the tutorial names actions

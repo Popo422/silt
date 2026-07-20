@@ -185,18 +185,25 @@ const AIM_HINTS = {
     dredge: 'Pindutín ang gintóng sapà — hukayin at angkinín ang singil.',
     build: 'Pindutín ang tanáw na lugár upang magtayô ng balangay.',
     ship: 'Pindutín ang iyóng balangay upang maglayág.',
+    // Stage two of shipping: an origin is chosen, its routes are lit.
+    shipTo: 'Sundán ang mga daán — pindutín ang look na paglálayágan.',
   },
   plain: {
     dredge: 'Click a gold channel to dredge it and claim its toll.',
     build: 'Click a highlighted node to build there.',
-    ship: 'Click one of your stations to ship from it.',
+    ship: 'Click one of your settlements to ship from it.',
+    shipTo: 'Follow the routes — click the bay to ship to. Every channel a route '
+      + 'crosses will silt.',
   },
 };
 
 // The hint is the only thing on screen that belongs to the aiming state, so the
 // way out lives here too — a hint that tells you what to click without telling
 // you how to stop is half an instruction.
-export function renderAimHint({ el, pendingAction, T }) {
+//
+// `stage` distinguishes the two halves of shipping: pick an origin, then pick a
+// destination bay. The rest of the actions have one stage and ignore it.
+export function renderAimHint({ el, pendingAction, T, stage }) {
   const hint = el('hint');
   if (!pendingAction) { hint.style.display = 'none'; return; }
   hint.style.display = 'block';
@@ -206,8 +213,9 @@ export function renderAimHint({ el, pendingAction, T }) {
                       the action is spent either way — this just declines to use it.">
       Skip <kbd>Esc</kbd>
     </button>`;
+  const key = pendingAction === 'ship' && stage === 'dest' ? 'shipTo' : pendingAction;
   hint.querySelector('.aimTxt').textContent =
-    (AIM_HINTS[T.id] ?? AIM_HINTS.plain)[pendingAction] ?? '';
+    (AIM_HINTS[T.id] ?? AIM_HINTS.plain)[key] ?? '';
 }
 
 // The final score table.

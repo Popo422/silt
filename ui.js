@@ -27,6 +27,11 @@ const $ = (id) => document.getElementById(id);
 const BOT_KEYS = ['balanced', 'tollkeeper', 'steward', 'expander', 'turtle', 'defector'];
 
 let g, program, picking, pendingAction, seed, queue, tut, config;
+// Two-stage shipping. Clicking a settlement used to resolve immediately, sending
+// the goods down whichever route paid most — you never chose the bay or the
+// path. Now the first click selects the origin and lights up every route from
+// it; the second click on a bay commits. shipFrom holds that in-between state.
+let shipFrom = null;
 // Watch mode. When active, seat 0 is driven by a bot like every other seat, so
 // the resolution walker never stops for input and the game plays itself. The
 // demo object owns only the commentary laid over that — never the moves.
@@ -316,6 +321,7 @@ function resetGame(players, s) {
   program = [null, null];
   picking = null;
   pendingAction = null;
+  shipFrom = null;
   queue = null;
   stepping = false;   // a quit mid-resolution would otherwise wedge the next game
   roundsPlayed = 0;
@@ -401,6 +407,9 @@ function render() {
     g, human: HUMAN, playerColors: PC, theme: T,
     pendingAction,
     highlight: tut?.step()?.highlight?.() ?? null,
+    // The routes to draw while a ship origin is selected: every navigable path
+    // from it to a bay, so you can see where the goods could go before choosing.
+    shipRoutes: shipFrom ? shipOptions(g, g.players[HUMAN]).filter(o => o.from === shipFrom) : null,
     artImage, ico, nodeLabel, ART,
   });
   $('rd').textContent = `${T.terms.round.name} ${g.round} / ${TUNING.rounds}`;
@@ -451,7 +460,7 @@ function render() {
     el: $, player: g.players[HUMAN], T, tuning: TUNING, nodeLabel, esc,
   });
   $('go').disabled = !(program[0] && program[1]) || !!pendingAction;
-  renderAimHint({ el: $, pendingAction, T });
+  renderAimHint({ el: $, pendingAction, T, stage: shipFrom ? 'dest' : 'origin' });
   $('skipAim')?.addEventListener('click', skipAim);
   renderTutorial();
 }
@@ -654,8 +663,10 @@ function wireBoard() {
     if (!t) return;
     if (t.dataset.hit) { resolveHuman({ channel: t.dataset.hit }); return; }
     const id = t.dataset.hitNode;
-    if (t.dataset.hitKind === 'build') resolveHuman({ node: id });
-    else pickShip(id);
+    const kind = t.dataset.hitKind;
+    if (kind === 'build') resolveHuman({ node: id });
+    else if (kind === 'shipTo') shipTo(id);      // stage two: chosen bay
+    else pickShip(id);                            // stage one: origin, or single-route
   });
 }
 
@@ -663,6 +674,7 @@ async function resolveHuman(choice) {
   if (!pendingAction || !queue) return;
   const a = pendingAction;
   pendingAction = null;
+  shipFrom = null;   // whichever way the ship resolved or was skipped, aim is over
   execute(g, HUMAN, a, choice, queue.claimed);
   await flush({ actor: HUMAN, action: a });
   step();
@@ -679,10 +691,32 @@ function skipAim() {
   resolveHuman({});
 }
 
+// Stage one. Clicking a settlement no longer ships — it selects the origin and
+// reveals its routes. The one exception: if every route leads to the same bay,
+// there is no destination to choose, so it resolves in a single click as before
+// (the highest-paying path among identical endpoints).
 function pickShip(from) {
   const opts = shipOptions(g, g.players[HUMAN]).filter(o => o.from === from);
   if (!opts.length) return;
+  const bays = new Set(opts.map(o => o.mouth));
+  if (bays.size <= 1) {
+    opts.sort((a, b) => b.payout - a.payout);
+    resolveHuman({ option: opts[0] });
+    return;
+  }
+  shipFrom = from;
+  render();
+}
+
+// Stage two. A destination bay was clicked; ship there. Among routes to the same
+// bay (a settlement can reach one bay several ways) take the highest-paying,
+// which is also the fewest channels crossed and so the least silt caused.
+function shipTo(mouth) {
+  const opts = shipOptions(g, g.players[HUMAN])
+    .filter(o => o.from === shipFrom && o.mouth === mouth);
+  if (!opts.length) return;
   opts.sort((a, b) => b.payout - a.payout);
+  shipFrom = null;
   resolveHuman({ option: opts[0] });
 }
 
