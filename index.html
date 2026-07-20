@@ -845,21 +845,21 @@
     /* min-width:0 on every flex child. Without it the slots and the commit button
        refuse to shrink below their content and push the page into horizontal
        scroll on a phone. */
-    .barLead,.barSlots,.barGo,#bar .acts{min-width:0}
-    /* Two columns, not four. Four action buttons need ~503px of content and a
-       phone gives them 368 — the grid could not shrink further, so the overflow
-       went to the page instead. */
-    #bar .acts{order:3;flex:1 0 100%;grid-template-columns:1fr 1fr;gap:7px}
-    /* min-height holds the 44px touch target: trimming padding to fit the width
-       had quietly shrunk these below what a thumb can hit reliably. */
-    #bar .act{padding:9px 8px;min-height:48px}
+    /* Single clean column on a phone: ANG PLANO + the two slots, then the four
+       action cards, then the commit button — each full width, aligned. The old
+       two-up row (slots beside the commit block) left them at different heights and
+       read as off-centre. */
+    #bar{flex-direction:column;align-items:stretch}
+    .barLead,.barSlots,.barGo,#bar .acts{min-width:0;width:100%}
+    .barLead{order:1}
+    #bar .acts{order:2;grid-template-columns:1fr 1fr;gap:7px}
+    .barGo{order:3}
+    #bar .act{padding:9px 8px;min-height:48px}   /* 44px+ touch target */
     #bar .act .t{font-size:13px}
-    .barLead{flex:1 1 auto}
-    .barSlots{flex:1 1 auto}
+    .barSlots{display:flex}
     .barSlots .slot{flex:1;width:auto;min-width:0;height:52px}
-    .barGo{flex:1 1 130px;min-width:0}
-    .barGo #go{padding:12px 8px;font-size:13px;white-space:nowrap;
-      overflow:hidden;text-overflow:ellipsis}
+    .barGo #go{padding:13px;font-size:15px}
+    .barGo .stepHint{text-align:center}
     /* The aim/confirm bar spans the board bottom full-width on a phone — a corner
        box is a small thumb target, and full-width keeps its buttons reachable. */
     #board #hint.prompt{left:8px;right:8px;bottom:8px;width:auto}
@@ -896,14 +896,12 @@
     /* Positioned by JS to sit just under the hamburger (--hdrMenuTop set on open). */
     .hdrMenu{top:var(--hdrMenuTop,60px)}
     .pane{padding:10px 13px}
-    /* Players go horizontal to save vertical space. The scroller needs an
-       explicit min-width:0 or the labelled stat columns make each row far wider
-       than the phone and push the whole PAGE into horizontal scroll instead of
-       scrolling inside this strip. */
-    #pls{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;min-width:0;
-      max-width:100%;-webkit-overflow-scrolling:touch}
-    .pl{margin-bottom:0;flex:0 0 auto;font-size:12px;padding:5px 8px}
-    .pl .nm{max-width:88px}
+    /* Players STACK vertically on the Table tab — it has full width and vertical
+       room now, so the old sideways-scrolling strip (which clipped the last player
+       and their stats) is wrong. Each player is a full-width row. */
+    #pls{display:flex;flex-direction:column;gap:6px}
+    .pl{margin-bottom:0;font-size:12px;padding:8px 10px}
+    .pl .nm{max-width:none;flex:1}
     /* Tighter stat columns on a phone: the labels still read, the row halves. */
     .pl .st{gap:7px}
     .pl .st b{font-size:12px}
