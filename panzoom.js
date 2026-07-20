@@ -56,6 +56,11 @@ export function createPanZoom({
   };
 
   const centre = () => [view.x + view.w / 2, view.y + view.h / 2];
+  // Fit the home view to the container's aspect so a portrait phone fills vertically
+  // instead of letterboxing the padded square viewBox into a thin strip. `content`
+  // is the tight bounds of the actual delta; we frame it to the container aspect,
+  // growing the shorter axis so the whole delta stays visible with minimal margin.
+  // Falls back to the padded `home` box when the container has not been laid out.
   const reset = () => { Object.assign(view, home); apply(); };
 
   svg.addEventListener('wheel', (e) => {
@@ -65,8 +70,28 @@ export function createPanZoom({
   }, { passive: false });
 
   let drag = null;
+  // Live pointers, so a second finger switches drag into a two-finger pinch. On a
+  // phone the board is small and a specific channel is hard to hit — pinch-to-zoom
+  // is how you get close enough to tap one.
+  const pts = new Map();
+  let pinch = null;   // { dist, cx, cy } in client px, captured when the 2nd finger lands
+
+  const pinchStart = () => {
+    const [a, b] = [...pts.values()];
+    pinch = {
+      dist: Math.hypot(a.x - b.x, a.y - b.y),
+      cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2,
+    };
+    drag = null;                       // a pan-in-progress yields to the pinch
+    svg.classList.remove('dragging');
+    onDragEnd(true);                   // suppress the click a lifted finger would fire
+  };
+
   svg.addEventListener('pointerdown', (e) => {
-    if (!canPan() || e.button !== 0) return;
+    if (!canPan()) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) { pinchStart(); return; }
+    if (e.button !== 0) return;
     // Do NOT capture the pointer yet. Capturing on press redirects the following
     // `click` to the svg itself, so a plain click on a target no longer lands on
     // the target — which broke target picking once pan was allowed while aiming.
@@ -75,6 +100,17 @@ export function createPanZoom({
     drag = { id: e.pointerId, from: toBoard(e.clientX, e.clientY), moved: false };
   });
   svg.addEventListener('pointermove', (e) => {
+    if (pts.has(e.pointerId)) pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    // Two fingers down: zoom by the change in finger distance, about their midpoint.
+    if (pinch && pts.size >= 2) {
+      const [a, b] = [...pts.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+      const p = toBoard(cx, cy);
+      zoomAt(dist / pinch.dist, p.x, p.y);
+      pinch.dist = dist;
+      return;
+    }
     if (!drag || e.pointerId !== drag.id) return;
     const p = toBoard(e.clientX, e.clientY);
     const dx = p.x - drag.from.x, dy = p.y - drag.from.y;
@@ -89,6 +125,8 @@ export function createPanZoom({
     apply();
   });
   const endDrag = (e) => {
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;    // dropped below two fingers: pinch is over
     if (!drag || e.pointerId !== drag.id) return;
     svg.classList.remove('dragging');
     // A pan ends in a click on whatever is under the cursor. The caller needs to

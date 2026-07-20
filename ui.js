@@ -326,11 +326,13 @@ function resetGame(players, s) {
   roundsPlayed = 0;
   fx.clear();
   setActor(null);
-  panzoom?.reset();   // a new game should not inherit the last one's pan
   $('log').innerHTML = '';
   $('ov').classList.remove('on');
   $('menu').classList.add('hide');
   $('game').classList.remove('hide');
+  // Fit AFTER the game is shown: reset() measures the board container, and a hidden
+  // board has no size, so fitting it here would frame to a 0×0 rect and land wrong.
+  panzoom?.reset();   // a new game should not inherit the last one's pan
   tut = createTutorial();
 }
 

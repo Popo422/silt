@@ -228,6 +228,10 @@
       transparent 42%, rgba(24,20,14,.42) 100%)}
   #svg{position:relative;z-index:1}
   #svg{width:100%;height:100%;display:block}
+  /* Own all touch gestures on the board: without this the browser treats a
+     two-finger pinch as page zoom and a drag as page scroll, and our pan/pinch
+     handlers never see them. */
+  #svg{touch-action:none}
   /* Effects overlay sits exactly on the board and never intercepts a click. */
   #fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
 
@@ -675,6 +679,11 @@
     color:var(--dim2);text-transform:lowercase}
   .bookBody dl.acts dt.neg{color:var(--p3)}
   .bookBody dl.acts dd{margin:0;color:var(--dim)}
+  /* Woven edge-case notes: the "what if...?" you flip to the book to settle.
+     Set apart from the rule above them without breaking into a separate FAQ. */
+  .bookBody .edge{display:block;margin-top:6px;padding-left:9px;font-size:12px;
+    line-height:1.55;color:var(--dim2);border-left:2px solid var(--line)}
+  .bookBody .edge b{color:var(--dim)}
   /* Diagrams. These draw with the same channel curves and water textures as the
      real board, so what the rulebook shows cannot drift from what you play. */
   .bookBody .fig{margin:14px 0 16px;padding:12px 12px 8px;
@@ -748,7 +757,10 @@
     /* The board+sidebar row stacks on a phone, and the action bar keeps its own
        band at the bottom where a thumb can reach it. */
     #top{flex-direction:column;flex:1 1 auto;min-height:0}
-    #board{flex:0 0 auto;height:46dvh;min-height:240px}
+    /* The board is the thing you read to plan, so give it the lion's share of a
+       phone screen — 46dvh left nodes and cube tracks unreadably small. Pinch to
+       get in close on a specific channel; the controls scroll below. */
+    #board{flex:0 0 auto;height:60dvh;min-height:300px}
     aside{width:100%;border-left:none;border-top:1px solid var(--line);
       flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
     /* Bar wraps: slots and commit on one line, the four actions below. */
@@ -772,7 +784,10 @@
     .barGo{flex:1 1 130px;min-width:0}
     .barGo #go{padding:12px 8px;font-size:13px;white-space:nowrap;
       overflow:hidden;text-overflow:ellipsis}
-    .barGo .prompt{position:static;width:auto;margin-bottom:6px}
+    /* The aim/confirm bar spans the board bottom full-width on a phone — a corner
+       box is a small thumb target, and full-width keeps its buttons reachable. */
+    #board #hint.prompt{left:8px;right:8px;bottom:8px;width:auto}
+    #board #hint .skipAim,#board #hint .confirmYes{min-height:44px;font-size:13px}
     /* Zoom buttons need a real tap target on touch. */
     .zoomBtn{width:38px;height:38px;font-size:17px}
     header{position:sticky;top:0;z-index:5;background:var(--panel)}
