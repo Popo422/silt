@@ -1,8 +1,7 @@
 // SILT — bot strategies. Each is a distinct archetype so sims expose
 // whether the design punishes/rewards what it should.
-import { TUNING, buildCost, buildTargets, dredgeTargets, shipOptions, canReachMouth,
-  contractFit, lakbayTargets } from './engine.js';
-import { chKey, NODE_BY_ID, GOODS, MOUTHS } from './graph.js';
+import { TUNING, buildCost, buildTargets, dredgeTargets, shipOptions, canReachMouth, contractFit } from './engine.js';
+import { chKey, NODE_BY_ID, GOODS } from './graph.js';
 
 // Pick the action pair for the round, then per-slot choices are made live.
 export const STRATEGIES = {
@@ -104,12 +103,6 @@ export const STRATEGIES = {
     // of a contract's face value, so a genuinely stuck card triggers a refresh.
     const hasLiveContract = p.contracts.some(c => contractFit(g, p, c) > c.vp * 0.4);
     const roomToDraw = p.contracts.length < TUNING.handLimit;
-    // Boxed in? If I want to grow but adjacency-build reaches nowhere useful, or a
-    // bay I need is unreachable, Lakbay the Datu out. Only when it actually opens a
-    // new bay — otherwise a normal build is cheaper. This is the escape valve.
-    const escape = (!canBuild || reachableBays(g, p).size < MOUTHS.length)
-      ? bestLakbay(g, p) : null;
-    const wantLakbay = escape && escape.opensBay;
 
     const prog = [];
     // Grab land early — cost escalates, and more goods means more contracts reachable.
@@ -118,8 +111,6 @@ export const STRATEGIES = {
     if (opts.length) prog.push('ship');
     // Protect a route about to die before it costs me a stranded station.
     if (dying.length && prog.length < 2) prog.push('dredge');
-    // Break out of a lockout toward a bay I cannot otherwise reach.
-    if (wantLakbay && prog.length < 2) prog.push('lakbay');
     // Cycle a hand I cannot deliver, rather than shipping into contracts I will
     // never complete.
     if (!hasLiveContract && roomToDraw && prog.length < 2) prog.push('survey');
@@ -127,7 +118,6 @@ export const STRATEGIES = {
     while (prog.length < 2) {
       if (opts.length > prog.filter(a => a === 'ship').length) prog.push('ship');
       else if (canBuild) prog.push('build');
-      else if (wantLakbay && !prog.includes('lakbay')) prog.push('lakbay');
       else if (dredgeTargets(g).length && p.coins >= TUNING.dredgeCoins) prog.push('dredge');
       else if (roomToDraw) prog.push('survey');
       else prog.push('ship');
@@ -239,10 +229,6 @@ export function chooseTarget(g, p, action, strat) {
       t.sort((a, b) => scoreNode(g, p, b) - scoreNode(g, p, a));
       return { node: t[0] };
     }
-    case 'lakbay': {
-      const best = bestLakbay(g, p);
-      return best ? { node: best.node } : null;
-    }
     default: return {};
   }
 }
@@ -254,56 +240,4 @@ function scoreNode(g, p, id) {
   const have = new Set(p.stations.map(x => NODE_BY_ID[x].good));
   if (!have.has(NODE_BY_ID[id].good)) s += 3;
   return s;
-}
-
-// Which bays can this player currently ship to from any of its stations? A bay it
-// cannot reach is a dead contract and a missed bonus — the thing Lakbay exists to
-// fix. Returns a Set of mouth ids.
-function reachableBays(g, p) {
-  const bays = new Set();
-  for (const s of p.stations) {
-    for (const r of shipRoutesReach(g, s)) bays.add(r);
-  }
-  return bays;
-}
-// Bays reachable from a node by living water (thin wrapper so the AI does not need
-// the engine's full route list — it only wants which mouths, not the paths).
-function shipRoutesReach(g, from) {
-  const bays = [];
-  for (const m of MOUTHS) if (canReachMouth(g, from, 1) && bayReachable(g, from, m)) bays.push(m);
-  return bays;
-}
-// Can `from` reach the specific mouth `m` by depth>=1 water?
-function bayReachable(g, from, m) {
-  const seen = new Set([from]), stack = [from];
-  while (stack.length) {
-    const id = stack.pop();
-    if (id === m) return true;
-    for (const n of g.out[id]) {
-      if (g.depth[chKey(id, n)] >= 1 && !seen.has(n)) { seen.add(n); stack.push(n); }
-    }
-  }
-  return false;
-}
-
-// Best Lakbay destination for a bot: a settle-able node that opens a bay the player
-// cannot currently reach, cheapest first. Returns { node, steps, opensBay } or null.
-// This is what makes Lakbay a real escape rather than a random walk — the chief
-// journeys toward the region the player is locked out of.
-function bestLakbay(g, p) {
-  const targets = lakbayTargets(g, p);
-  if (!targets.length) return null;
-  const have = reachableBays(g, p);
-  const affordable = targets.filter(t =>
-    p.coins >= t.steps * TUNING.lakbayPerStep + buildCost(p));
-  if (!affordable.length) return null;
-  // Score: a node that reaches a NEW bay is worth most; then a live route to sea;
-  // then cheaper (fewer steps).
-  const scored = affordable.map(t => {
-    const reaches = MOUTHS.filter(m => bayReachable(g, t.node, m));
-    const opensNew = reaches.some(m => !have.has(m));
-    return { ...t, score: (opensNew ? 100 : 0) + (reaches.length ? 10 : 0) - t.steps };
-  }).sort((a, b) => b.score - a.score);
-  const best = scored[0];
-  return { node: best.node, steps: best.steps, opensBay: best.score >= 100 };
 }

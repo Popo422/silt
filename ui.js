@@ -1,7 +1,7 @@
 import { NODE_BY_ID } from './graph.js';
 import {
   newGame, execute, siltPhase, bayBonusPhase, regrowPhase, upkeepPhase, score, seatOrder,
-  buildTargets, dredgeTargets, shipOptions, lakbayTargets, buildCost, surveyDrawnFor, TUNING,
+  buildTargets, dredgeTargets, shipOptions, buildCost, surveyDrawnFor, TUNING,
 } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
 import { createTutorial, stepText } from './tutorial.js';
@@ -660,9 +660,7 @@ async function step() {
         const needsTarget =
           (action === 'dredge' && dredgeTargets(g).length && p.coins >= TUNING.dredgeCoins) ||
           (action === 'build' && buildTargets(g, p).length && p.coins >= buildCost(p)) ||
-          (action === 'ship' && shipOptions(g, p).length) ||
-          (action === 'lakbay' && lakbayTargets(g, p).some(t =>
-            p.coins >= t.steps * TUNING.lakbayPerStep + buildCost(p)));
+          (action === 'ship' && shipOptions(g, p).length);
         if (needsTarget) { pendingAction = action; render(); return; }
         // Survey is the one action whose choice is not on the board: draw three
         // contracts, show them, let the player keep one. Only worth prompting if
@@ -716,7 +714,6 @@ function wireBoard() {
     const id = t.dataset.hitNode;
     const kind = t.dataset.hitKind;
     if (kind === 'build') resolveHuman({ node: id });
-    else if (kind === 'lakbay') resolveHuman({ node: id });   // journey destination
     else if (kind === 'shipTo') shipTo(id);      // stage two: chosen bay
     else pickShip(id);                            // stage one: origin, or single-route
   });

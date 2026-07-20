@@ -57,7 +57,7 @@ export function pages(T) {
     },
     {
       title: anod ? 'Mga Kilos' : 'The Actions',
-      sub: 'five things you can do',
+      sub: 'four things you can do',
       body: `
         <dl class="acts">
           <dt>${A.dredge.name}<em>${A.dredge.gloss || 'dredge'}</em></dt>
@@ -83,14 +83,6 @@ export function pages(T) {
           <dd>Take <b>${TUNING.surveyCoins}${money}</b> and draw
             <b>${TUNING.surveyDraw}</b> ${X.contract.name.toLowerCase()},
             keeping <b>1</b>. Hand limit ${TUNING.handLimit}.</dd>
-
-          <dt>${A.lakbay.name}<em>${A.lakbay.gloss || 'journey'}</em></dt>
-          <dd>Walk your <b>Datu</b> across the delta — over living water, in
-            <i>any</i> direction, even past a rival's town — and found a new
-            ${X.station.name.toLowerCase()} where it lands. Costs
-            <b>${TUNING.lakbayPerStep}${money} per step</b> plus the settlement cost.
-            This is your way out when a bad opening or a wall of rival towns has
-            boxed you into one arm of the river.</dd>
         </dl>
         <p class="tip">You may program the same action twice.</p>`,
     },

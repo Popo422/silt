@@ -107,9 +107,9 @@ export function buildClaims(g, human, T, nodeLabel) {
 // read how safe their own claims are and how close a rival's is to flipping. Ties
 // go to the most recent dredger, so "level on markers" still means takeable.
 //
-// `claims` is prepared by ui.js (which has the game state) as a plain array so this
-// stays a pure renderer: [{ key, label, owner, ownerName, ownerN, rival, rivalName,
-// rivalN, mine, takeable }]. Sorted yours-first, then most-contested.
+// `claims` is prepared by buildClaims above as a plain array so this stays a pure
+// renderer: [{ key, label, owner, ownerName, ownerN, rival, rivalName, rivalN, mine,
+// takeable }]. Sorted yours-first, then most-contested.
 export function renderClaims({ el, claims, colors, T, esc }) {
   const box = el('claims');
   if (!box) return;
@@ -161,7 +161,6 @@ export function actionDescriptions(tuning, cost) {
     build:  `Found a new settlement. Costs ${coin(cost)}.`,
     ship:   `Carry up to ${tuning.shipCubesMax} goods downstream to the sea.`,
     survey: `Take ${coin(tuning.surveyCoins)} and draw ${tuning.surveyDraw} contracts, keep 1.`,
-    lakbay: `Journey your chief to open ground and settle. ${coin(tuning.lakbayPerStep)} per step + ${coin(cost)}.`,
   };
 }
 
@@ -185,10 +184,6 @@ export function actionTips(tuning, cost) {
     survey: `Draws ${tuning.surveyDraw} contracts and lets you keep one, plus `
           + `${tuning.surveyCoins} gold. Contracts are most of your score, so a hand `
           + `with nothing in it is usually worth fixing before anything else.`,
-    lakbay: `Walks your chief across the delta — in any direction, over living water — `
-          + `and founds a settlement where it lands, even past a wall of rival towns. `
-          + `Costs ${tuning.lakbayPerStep} gold per step plus the settlement cost. This `
-          + `is your way out when a bad position or a rival wall has boxed you in.`,
   };
 }
 
@@ -204,7 +199,7 @@ export function actionTips(tuning, cost) {
 // full replaces one of them, and finding that out afterwards — by watching the
 // wrong plan resolve — is the worst possible time to learn it.
 export function renderActions({ el, T, desc, tips, want, disabled, target, replacing, icon, ico, esc, onPick }) {
-  el('acts').innerHTML = ['dredge', 'build', 'ship', 'survey', 'lakbay'].map(a => `
+  el('acts').innerHTML = ['dredge', 'build', 'ship', 'survey'].map(a => `
     <button class="act${want && want !== a ? ' dimmed' : ''}"
             data-act="${a}"
             ${disabled || (want && want !== a) ? 'disabled' : ''}
@@ -263,7 +258,6 @@ const AIM_HINTS = {
     ship: 'Pindutín ang iyóng balangay upang maglayág.',
     // Stage two of shipping: an origin is chosen, its routes are lit.
     shipTo: 'Sundán ang mga daán — pindutín ang look na paglálayágan.',
-    lakbay: 'Pindutín ang lugár na pupuntahan ng datu — mas malayò, mas mahál.',
   },
   plain: {
     dredge: 'Click a gold channel to dredge it and claim its toll.',
@@ -271,7 +265,6 @@ const AIM_HINTS = {
     ship: 'Click one of your settlements to ship from it.',
     shipTo: 'Follow the routes — click the bay to ship to. Every channel a route '
       + 'crosses will silt.',
-    lakbay: 'Click where your chief should journey and settle — the farther, the more gold.',
   },
 };
 

@@ -489,13 +489,7 @@ test.describe('effects', () => {
     await page.locator('[data-act="survey"]').click();
     await page.locator('[data-act="survey"]').click();
     await page.locator('#go').click();
-    // Survey opens a keep-1 picker; dismiss it so resolution proceeds and the actor
-    // badge lights for whoever acts. (The old comment assumed survey auto-resolved.)
-    for (let i = 0; i < 2; i++) {
-      if (await page.locator('#survey.on').isVisible()) {
-        await page.locator('.surveyCard').first().click();
-      }
-    }
+    // Survey needs no target, so the round resolves without waiting on us.
     await page.waitForFunction(() => window.SILT.actor() !== null, null, { timeout: 10000 });
     const who = await page.evaluate(() => window.SILT.actor());
     expect(who).toBeTruthy();

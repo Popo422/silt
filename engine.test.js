@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
   newGame, execute, siltPhase, regrowPhase, upkeepPhase, score, seatOrder,
   buildTargets, dredgeTargets, shipRoutes, shipOptions, canReachMouth, startValue,
-  buildCost, TUNING, ACTIONS, channelOwner, largestNetwork, lakbayTargets,
+  buildCost, TUNING, ACTIONS, channelOwner, largestNetwork,
 } from './engine.js';
 import { CHANNELS, MOUTHS, NODES, chKey, buildIndex, NODE_BY_ID } from './graph.js';
 import { THEME, PLAIN } from './theme.js';
@@ -659,75 +659,6 @@ describe('reachability', () => {
   it('treats a mouth as trivially reachable', () => {
     const g = newGame(3, 1003);
     expect(canReachMouth(g, 'A', 3)).toBe(true);
-  });
-});
-
-describe('lakbay — the anti-boxed-in escape', () => {
-  it('gives the Datu a starting node on the drafted settlement', () => {
-    const g = newGame(3, 2000);
-    for (const p of g.players) expect(p.datu).toBe(p.stations[0]);
-  });
-
-  it('reaches far more nodes than adjacency-only build', () => {
-    const g = newGame(3, 2001);
-    const p = g.players[0];
-    const lak = lakbayTargets(g, p);
-    const build = buildTargets(g, p);
-    // The Datu can journey the whole living delta; build only touches neighbours.
-    expect(lak.length).toBeGreaterThan(build.length);
-    // Every lakbay target is an empty, non-mouth node.
-    const owned = new Set(g.players.flatMap(x => x.stations));
-    for (const t of lak) {
-      expect(owned.has(t.node)).toBe(false);
-      expect(MOUTHS.includes(t.node)).toBe(false);
-      expect(t.steps).toBeGreaterThan(0);
-    }
-  });
-
-  it('never routes the Datu through a bay', () => {
-    const g = newGame(3, 2002);
-    const p = g.players[0];
-    for (const t of lakbayTargets(g, p)) {
-      for (const n of t.path) expect(MOUTHS.includes(n)).toBe(false);
-    }
-  });
-
-  it('moves the Datu and founds a station, paying per step', () => {
-    const g = newGame(3, 2003);
-    const p = g.players[0];
-    p.coins = 50;   // ensure affordable
-    const target = lakbayTargets(g, p).sort((a, b) => b.steps - a.steps)[0];
-    const before = { datu: p.datu, stations: p.stations.length, coins: p.coins };
-    execute(g, 0, 'lakbay', { node: target.node }, new Set());
-    expect(p.datu).toBe(target.node);                       // chief moved
-    expect(p.stations).toContain(target.node);              // settled
-    expect(p.stations.length).toBe(before.stations + 1);
-    // Paid steps*perStep + buildCost (measured at the pre-settle station count).
-    const expected = target.steps * TUNING.lakbayPerStep
-      + (TUNING.buildBase + before.stations);
-    expect(before.coins - p.coins).toBe(expected);
-  });
-
-  it('fizzles when it cannot afford the journey', () => {
-    const g = newGame(3, 2004);
-    const p = g.players[0];
-    p.coins = 0;
-    const target = lakbayTargets(g, p)[0];
-    execute(g, 0, 'lakbay', { node: target.node }, new Set());
-    expect(p.stations).not.toContain(target.node);   // nothing founded
-    expect(p.datu).toBe(p.stations[0]);              // chief did not move
-  });
-
-  it('lets a walled-in player reach a node build cannot', () => {
-    // Wall every immediate neighbour of the Datu with rival stations, leaving no
-    // adjacency build targets, then confirm lakbay still finds open ground.
-    const g = newGame(3, 2005);
-    const p = g.players[0];
-    const start = p.datu;
-    const rivals = [...g.out[start], ...g.inn[start]].filter(n => !MOUTHS.includes(n));
-    for (const n of rivals) g.players[1].stations.push(n);
-    expect(buildTargets(g, p).length).toBe(0);       // boxed for Build
-    expect(lakbayTargets(g, p).length).toBeGreaterThan(0);   // not for Lakbay
   });
 });
 

@@ -7,7 +7,7 @@
 // it testable and keeps the dependency pointing one way.
 
 import { NODES, MOUTHS, CHANNELS, chKey, NODE_BY_ID } from './graph.js';
-import { buildTargets, shipOptions, lakbayTargets, canReachMouth, TUNING } from './engine.js';
+import { buildTargets, shipOptions, canReachMouth, TUNING } from './engine.js';
 import { nodeName } from './theme.js';
 import { drawBayTrack } from './bays.js';
 import { el, use } from './svg.js';
@@ -139,15 +139,6 @@ export function drawBoard(ctx) {
 
   const btargets = pendingAction === 'build'
     ? new Set(buildTargets(g, g.players[HUMAN])) : new Set();
-  // Lakbay destinations: empty nodes the Datu can journey to and afford. Each is a
-  // legal settle spot, highlighted and clickable like a build target. The step
-  // count rides along so the tooltip can show what the walk costs.
-  const lopts = pendingAction === 'lakbay'
-    ? lakbayTargets(g, g.players[HUMAN]).filter(t =>
-        g.players[HUMAN].coins >= t.steps * TUNING.lakbayPerStep + (TUNING.buildBase + g.players[HUMAN].stations.length))
-    : [];
-  const ltargets = new Set(lopts.map(t => t.node));
-  const lsteps = Object.fromEntries(lopts.map(t => [t.node, t.steps]));
   // Stage one of shipping: the settlements you can send from. Suppressed once one
   // is picked (routes set), so the board switches from "choose an origin" to
   // "choose a destination" rather than showing both at once.
@@ -341,18 +332,12 @@ export function drawBoard(ctx) {
       : `The badge above it shows what it is holding: ${g.cubes[n.id]} ${good}. `
         + `${T.actions.ship.name} carries goods from here downstream to a bay, `
         + `which is how contracts get filled.`;
-    // When aiming a Lakbay, a reachable node's tooltip names the journey cost, so
-    // you can weigh the distance you are paying for before you click.
-    const lakTip = ltargets.has(n.id)
-      ? ` Journey here: ${lsteps[n.id]} step${lsteps[n.id] === 1 ? '' : 's'} `
-        + `(${lsteps[n.id] * TUNING.lakbayPerStep} gold) plus the settlement cost.`
-      : '';
     const grp = el('g', {
       class: 'node', 'data-node': n.id,
       'data-tip-title': nodeName(T, n.id),
-      'data-tip': (MOUTHS.includes(n.id)
+      'data-tip': MOUTHS.includes(n.id)
         ? 'Open sea. Goods delivered here score, and contracts naming this bay are filled here.'
-        : `A settlement site producing ${good}. ${stock}`) + lakTip,
+        : `A settlement site producing ${good}. ${stock}`,
     });
 
     // Tutorial highlight OR a legal target for the action being aimed right now.
@@ -363,7 +348,7 @@ export function drawBoard(ctx) {
     // Without it the routes lit up but the thing you actually click — the bay at
     // the end — had no cue at all, so you had to guess the endpoint was the
     // target. The pulse plus the beacon ring is what says "click here".
-    const isTarget = btargets.has(n.id) || sfrom.has(n.id) || destMouths.has(n.id) || ltargets.has(n.id);
+    const isTarget = btargets.has(n.id) || sfrom.has(n.id) || destMouths.has(n.id);
     const highlighted = isTarget
       || (hl?.kind === 'node' && (hl.ids === 'own'
         ? g.players[HUMAN].stations.includes(n.id)
@@ -383,7 +368,7 @@ export function drawBoard(ctx) {
       // alone was easy to miss on a busy board.
       fill = `color-mix(in srgb, #4a4130 72%, ${PC[own]} 14%)`;
     }
-    if (btargets.has(n.id) || sfrom.has(n.id) || ltargets.has(n.id)) {
+    if (btargets.has(n.id) || sfrom.has(n.id)) {
       stroke = 'var(--gold)'; sw = 0.75;
       fill = 'color-mix(in srgb, var(--panel) 70%, var(--gold) 16%)';
     }
@@ -600,11 +585,10 @@ export function drawBoard(ctx) {
       grp.appendChild(badge);
     }
 
-    const interactive = btargets.has(n.id) || sfrom.has(n.id) || destMouths.has(n.id) || ltargets.has(n.id);
+    const interactive = btargets.has(n.id) || sfrom.has(n.id) || destMouths.has(n.id);
     if (interactive) {
       grp.style.cursor = 'pointer';
       const kind = btargets.has(n.id) ? 'build'
-        : ltargets.has(n.id) ? 'lakbay'     // journey destination to settle
         : destMouths.has(n.id) ? 'shipTo'   // stage two: a chosen destination bay
         : 'ship';                           // stage one: a settlement to send from
       // Fingers are much bigger than a 2.7-unit node: add a generous invisible
@@ -616,40 +600,6 @@ export function drawBoard(ctx) {
     }
     svg.appendChild(grp);
   }
-
-  // --- Datu meeples. Each player's chief stands on a node; Lakbay walks it across
-  // the delta to found a new settlement, the escape from being boxed in. Drawn on
-  // top of the nodes, offset up-left so it does not hide the settlement piece, in
-  // the owner's colour. Given a stable id so the FX layer can animate the walk.
-  g.players.forEach((pl, i) => {
-    if (pl.datu == null) return;
-    const nd = NODE_BY_ID[pl.datu];
-    if (!nd) return;
-    const dmine = i === HUMAN;
-    const dx = nd.x - 2.4, dy = nd.y - 2.4;
-    const m = el('g', {
-      class: 'datu', 'data-datu': i, 'data-datu-at': pl.datu,
-      'data-tip-title': dmine ? 'Your Datu' : `${pl.name}'s Datu`,
-      'data-tip': dmine
-        ? 'Your chief. Lakbay journeys it across the delta — paying per step — to '
-          + 'found a settlement on open ground, even past a wall of rival towns.'
-        : `${pl.name}'s chief. It can journey to settle new ground.`,
-    });
-    // A little standing pawn: rounded base + head, in the player's colour.
-    m.appendChild(el('ellipse', { cx: dx, cy: dy + 1.5, rx: 1.15, ry: 0.4,
-      fill: 'rgba(20,16,10,.45)' }));                       // shadow
-    m.appendChild(el('path', {
-      // teardrop/pawn body
-      d: `M ${dx} ${dy - 1.5} C ${dx + 1.1} ${dy - 1.5} ${dx + 1.1} ${dy + 0.4} `
-        + `${dx} ${dy + 1.3} C ${dx - 1.1} ${dy + 0.4} ${dx - 1.1} ${dy - 1.5} ${dx} ${dy - 1.5} Z`,
-      fill: PC[i], stroke: dmine ? 'rgba(255,248,230,1)' : 'rgba(20,16,10,.7)',
-      'stroke-width': dmine ? 0.35 : 0.22,
-    }));
-    m.appendChild(el('circle', { cx: dx, cy: dy - 1.2, r: 0.85, fill: PC[i],
-      stroke: dmine ? 'rgba(255,248,230,1)' : 'rgba(20,16,10,.7)',
-      'stroke-width': dmine ? 0.35 : 0.22 }));               // head
-    svg.appendChild(m);
-  });
 
   // Channel targets go above the nodes so a click near a channel reaches it.
   for (const h of hitLayer) svg.appendChild(h);

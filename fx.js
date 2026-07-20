@@ -227,57 +227,6 @@ export function createFX(overlay, opts = {}) {
           return 650;
         }
 
-        case 'lakbay': {
-          // Walk the Datu across the delta, node by node, then plant it. The whole
-          // point the user asked for: you SEE the chief journey to open ground, not
-          // just teleport. The path is node ids from just after `from` to the
-          // destination; prepend `from` for the full walk.
-          const seq = [ev.from, ...(ev.path ?? [])].map(nodeAt).filter(Boolean);
-          const dest = nodeAt(ev.to);
-          if (seq.length < 2 || !dest) {
-            if (dest) float(dest.x, dest.y - 5, `−${ev.cost}`, 'fxSpend');
-            return 650;
-          }
-          if (soft) {
-            // Reduced motion: no walk, just mark the settle.
-            add(el('circle', { cx: dest.x, cy: dest.y, r: 3.3, fill: 'none',
-              stroke: color, 'stroke-width': 0.6, class: 'fxRing' }), 900);
-            float(dest.x, dest.y - 5, `−${ev.cost}`, 'fxSpend');
-            return 600;
-          }
-          const d = seq.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
-          const guide = el('path', { d, fill: 'none', stroke: 'none' });
-          overlay.appendChild(guide);
-          const len = guide.getTotalLength();
-          guide.remove();
-          // A step per node, paced so a longer journey visibly takes longer — the
-          // distance you are paying for is the distance you watch the chief walk.
-          const dur = Math.min(1500, 380 + len * 16);
-          // Faint dashed trail so the route the chief takes is legible.
-          add(el('path', { d, fill: 'none', stroke: color, 'stroke-width': 0.5,
-            'stroke-dasharray': '1.2 1', opacity: 0.7, class: 'fxWake',
-            style: `animation-duration:${dur}ms` }), dur + 200);
-          // The walking meeple: a little pawn following the path.
-          const pawn = el('g', { class: 'fxDatu' });
-          pawn.appendChild(el('circle', { r: 0.85, cy: -1.1, fill: color,
-            stroke: 'var(--bg)', 'stroke-width': 0.25 }));
-          pawn.appendChild(el('path', {
-            d: 'M 0 -1.5 C 1.1 -1.5 1.1 0.4 0 1.3 C -1.1 0.4 -1.1 -1.5 0 -1.5 Z',
-            fill: color, stroke: 'var(--bg)', 'stroke-width': 0.25 }));
-          const mv = el('animateMotion', {
-            dur: `${dur}ms`, path: d, rotate: '0', fill: 'freeze', repeatCount: '1',
-          });
-          pawn.appendChild(mv);
-          add(pawn, dur + 100);
-          mv.beginElement?.();
-          // Settle ring + cost float land as the chief arrives.
-          add(el('circle', { cx: dest.x, cy: dest.y, r: 3.3, fill: 'none',
-            stroke: color, 'stroke-width': 0.6, class: 'fxRing',
-            style: `animation-delay:${dur}ms` }), dur + 900);
-          float(dest.x, dest.y - 5, `−${ev.cost}`, 'fxSpend', dur);
-          return dur + 300;
-        }
-
         case 'contract': {
           const m = nodeAt(ev.mouth);
           if (!m) return 0;

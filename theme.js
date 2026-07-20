@@ -35,7 +35,6 @@ export const THEME = {
     build:  { name: 'Tayô',   gloss: 'settle',  note: 'raise a new balangay' },
     ship:   { name: 'Bangka', gloss: 'ship',    note: 'run cargo down to the bay' },
     survey: { name: 'Tanáw',  gloss: 'survey',  note: 'scout for trade agreements' },
-    lakbay: { name: 'Lakbay', gloss: 'journey', note: 'walk the datu to settle new ground' },
   },
 
   // --- goods ---------------------------------------------------------------
@@ -148,7 +147,6 @@ export const THEME = {
   icons: {
     station: 'balangay', mouth: 'look', logo: 'river', dead: 'silted',
     dredge: 'hukay', build: 'tayo', ship: 'bangka', survey: 'ginto',
-    lakbay: 'balangay',
   },
 
   // Rules text shown on the menu, in the game's own vocabulary.
@@ -168,7 +166,6 @@ export const PLAIN = {
     build:  { name: 'Build',  gloss: '', note: 'new station' },
     ship:   { name: 'Ship',   gloss: '', note: 'cargo to the sea' },
     survey: { name: 'Survey', gloss: '', note: 'draw contracts' },
-    lakbay: { name: 'Journey', gloss: '', note: 'move your chief to settle far ground' },
   },
   goods: {
     timber: { name: 'Timber', gloss: '', icon: 'timber' },
@@ -203,7 +200,6 @@ export const PLAIN = {
   icons: {
     station: 'station', mouth: 'mouth', logo: 'river', dead: 'silted',
     dredge: 'dredge', build: 'build', ship: 'ship', survey: 'survey',
-    lakbay: 'station',
   },
   legend: { deep: 'deep 3', mid: '2', shallow: '1 — fragile', dead: 'silted' },
 };
