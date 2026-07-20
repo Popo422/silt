@@ -34,16 +34,11 @@ let g, program, picking, pendingAction, seed, queue, tut, config;
 // path. Now the first click selects the origin and lights up every route from
 // it; the second click on a bay commits. shipFrom holds that in-between state.
 let shipFrom = null;
-// Survey's "keep 1 of 3". The three drawn contracts, held while the player picks
-// one — the decision used to be made for you (silently kept the highest VP), so
-// +3 gold was the only sign the action did anything.
+// Survey's "keep 1 of 3": the three drawn contracts, held while the player picks.
 let surveyDraw = null;
-// A target has been clicked but not yet committed: { choice, title, detail }.
-// Build now costs a variable distance premium, so clicking a node used to spend
-// gold you never saw coming. This holds the pick and shows its cost so you can
-// Confirm, Pick another, or Skip — nothing resolves until you say so. It does NOT
-// let you undo a fired action (the committed-actions tension is deliberate); it
-// only makes the aim itself reconsiderable.
+// A target clicked but not yet committed: { choice, title, detail }. Build carries
+// a variable distance premium, so this holds the pick and shows its cost — Confirm,
+// Pick another, or Skip. It reconsiders the aim, not a fired action.
 let pendingConfirm = null;
 // Watch mode. When active, seat 0 is driven by a bot like every other seat, so
 // the resolution walker never stops for input and the game plays itself. The
@@ -80,13 +75,8 @@ const fx = createFX(document.getElementById('fx'), {
 const SPEEDS = { off: 0, fast: 0.5, normal: 1 };
 let speed = 'normal';
 
-// 1× -> 2× -> off. Persisted: someone who turns animation off wants it to stay
-// off, not to re-disable it every session.
-//
-// Declared here with the rest of the speed state rather than beside cycleSpeed():
-// renderTutorial() reads SPEED_LABEL far above that point, which worked only
-// because render never runs during module evaluation. That is a crash waiting for
-// someone to move a call.
+// 1× -> 2× -> off, persisted. Declared here with the speed state (not beside
+// cycleSpeed) because renderTutorial reads SPEED_LABEL far above that point.
 const SPEED_ORDER = ['normal', 'fast', 'off'];
 const SPEED_LABEL = { normal: '1×', fast: '2×', off: 'off' };
 
@@ -94,11 +84,9 @@ const SPEED_LABEL = { normal: '1×', fast: '2×', off: 'off' };
 // for why it cannot start on its own.
 const speech = createSpeech();
 
-// Effects overlap (the tail of one plays under the next), so hold is most of an
-// effect's duration, not all of it. Too little overlap flickers; waiting for every
-// animation to finish made a round 7.4s. This lands a round ~3.5s. The floor
-// matters too: a 260ms effect still needs a beat after, or two fast actions read
-// as one.
+// Effects overlap (one tail plays under the next), so hold is most of an effect's
+// duration, not all of it — a round lands ~3.5s. The floor stops two fast actions
+// reading as one.
 const HOLD_MIN = 420;
 const HOLD_MAX = 900;
 const holdFor = (ms) =>
@@ -604,20 +592,36 @@ function say(t, cls = '') {
 
 // ---------------------------------------------------------------- turn flow
 
-$('go').addEventListener('click', () => {
+// A Build we can prove is unaffordable now, so its slot is wasted. Blind-commit
+// game: a Ship BEFORE the Build is left alone (its earnings may cover it, and
+// warning would leak the resolution the commit is meant to hide).
+function wastedBuildWarning() {
+  const me = g.players[HUMAN];
+  const buildSlot = program.indexOf('build');
+  if (buildSlot === -1 || (program[0] === 'ship' && buildSlot === 1)) return false;
+  return !buildTargets(g, me)
+    .some(n => me.coins >= buildCost(me) + buildStepCost(g, me, n));
+}
+
+// `warn` is on only for the button; the test/demo path can't answer a confirm().
+function commitProgram(warn) {
   if (!program[0] || !program[1] || pendingAction) return;
+  if (warn && wastedBuildWarning() && !confirm(
+    'You cannot afford to settle anywhere your network reaches right now, '
+    + 'so that action will be wasted. Commit anyway?')) return;
   g.players[HUMAN].program = [...program];
   for (const p of g.players) if (p.strat) p.program = STRATEGIES[p.strat](g, p);
   say(`Round ${g.round}`, 'hd');
   committedThisRound = true;   // programs are now public
   queue = { slot: 0, order: seatOrder(g), idx: 0, claimed: new Set() };
   step();
-});
+}
 
-// Resolution is async so each action can be *seen* before the next one starts.
-// Guarded against re-entry: resolveHuman() also calls step(), and two overlapping
-// walkers would consume the queue twice and skip players. (`stepping` is declared
-// with the other module state at the top — start() touches it before this point.)
+$('go').addEventListener('click', () => commitProgram(true));
+
+// Resolution is async so each action can be *seen* before the next. Guarded
+// against re-entry: resolveHuman() also calls step(), and two overlapping walkers
+// would consume the queue twice and skip players.
 async function step() {
   if (stepping) return;
   stepping = true;
@@ -680,9 +684,8 @@ async function step() {
       await flush({ actor: pi, action });
     }
   } finally {
-    // The guard at the top of this function is a synchronous check-then-set with
-    // no await between, so no other task can interleave. The rule cannot see
-    // that. Clearing here is what stops a thrown error wedging every future round.
+    // Clearing here is what stops a thrown error wedging every future round; the
+    // top-of-function guard is a sync check-then-set, so nothing interleaves.
     // eslint-disable-next-line require-atomic-updates
     stepping = false;
   }
@@ -753,9 +756,8 @@ function keepSurvey(contract) {
   resolveHuman({ drawn: surveyDraw, contract });
 }
 
-// Aiming was a one-way door: click an action, and the only exit was clicking a
-// board target. Changing your mind — or misreading which channel was affordable —
-// left you stuck with no visible way out. Resolution is already underway by this
+// Aiming was a one-way door: the only exit was clicking a board target, leaving
+// you stuck if you changed your mind. Resolution is already underway by this
 // point, so the action cannot be refunded; it resolves with no target, the same
 // path taken when no legal target exists at all. Said plainly on the button.
 function skipAim() {
@@ -772,8 +774,8 @@ function skipAim() {
   resolveHuman({});
 }
 
-// Stage one. Clicking a settlement no longer ships — it selects the origin and
-// reveals its routes. The one exception: if every route leads to the same bay,
+// Stage one. Clicking a settlement selects the origin and reveals its routes.
+// The one exception: if every route leads to the same bay,
 // there is no destination to choose, so it resolves in a single click as before
 // (the highest-paying path among identical endpoints).
 function pickShip(from) {
@@ -905,9 +907,7 @@ function finish() {
   $('ov').classList.add('on');
   $('ph').textContent = T.id === 'anod' ? 'Tapós na' : 'Game over';
   tut?.stop();
-  // A watched game ends like any other: the caption must not sit over the score
-  // table still offering to pause a game that is already finished.
-  stopDemo();
+  stopDemo();   // a watched game ends like any other — clear its caption
   renderTutorial();
 }
 
@@ -942,7 +942,8 @@ window.SILT = {
   // async when effects were added, so a test that called commit() and read the
   // DOM on the next line was racing the render — it failed only under parallel
   // load, which is the worst way for a race to show up.
-  commit: () => { $('go').click(); return settled(); },
+  // No modal on this path — tests/demo drive it and can't answer a confirm().
+  commit: () => { commitProgram(false); return settled(); },
   pending: () => pendingAction,
   autoResolve: () => {
     const p = g.players[HUMAN];
