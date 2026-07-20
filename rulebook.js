@@ -51,7 +51,15 @@ export function pages(T) {
           <li><b>${anod ? 'Gugol' : 'Upkeep'}</b> — pay <b>${TUNING.upkeepPerStation}${money}</b>
             for each ${X.station.name.toLowerCase()} beyond your first
             <b>${TUNING.freeStations}</b>. Cannot pay? You abandon one.</li>
+          <li><b>${anod ? 'Tubò' : 'Regrow'}</b> — each of your
+            ${X.station.name.toLowerCase()}s produces <b>${TUNING.stationYield}</b>
+            good, and <b>${TUNING.regrowPerRound}</b> good regrows on the emptiest
+            unclaimed node. Nothing grows past <b>${TUNING.cubesPerNode}</b>.</li>
         </ol>
+        <p class="warn">A node holds at most <b>${TUNING.cubesPerNode}</b> goods and
+        refills only <b>${TUNING.stationYield}</b> a round — but a single shipment
+        takes <b>${TUNING.shipCubesMax}</b>. Nodes run dry faster than they fill, so
+        you must keep spreading your shipping or expand to new land.</p>
         <p class="tip">Because you commit two actions blind, the real skill is
         predicting which channels will still be open when your second action fires.</p>`,
     },
@@ -76,8 +84,9 @@ export function pages(T) {
             <b>${TUNING.stationYield}</b> more each round.</dd>
 
           <dt>${A.ship.name}<em>${A.ship.gloss || 'ship'}</em></dt>
-          <dd>Move up to <b>${TUNING.shipCubesMax}</b> goods from one of your nodes
-            to a ${X.mouth.name.toLowerCase()}. Pays
+          <dd>Move up to <b>${TUNING.shipCubesMax}</b> goods from <b>one</b> of your
+            nodes to <b>one</b> ${X.mouth.name.toLowerCase()} — the goods are
+            <b>spent</b>, removed from the node for good. Pays
             <b>${TUNING.shipPerCube}${money}</b> per good plus
             <b>${TUNING.shipPerChannel}${money}</b> per channel crossed. Long routes
             pay more — and silt more.</dd>
