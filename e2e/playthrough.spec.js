@@ -36,13 +36,24 @@ async function clickTarget(page) {
   const pending = await page.evaluate(() => window.SILT.pending());
   if (!pending) return false;
 
+  // Survey resolves in its own sidebar picker (draw 3, keep 1), not on the board —
+  // it has no board target, so keep the first card offered to dismiss it.
+  if (pending === 'survey') {
+    const card = page.locator('#survey.on .surveyCard').first();
+    await expect(card).toBeAttached();
+    await card.click({ force: true });
+    return true;
+  }
+
   if (pending === 'dredge') {
     const hit = page.locator('#svg [data-hit]').first();
     await expect(hit).toBeAttached();
     await hit.click({ force: true });
     return true;
   }
-  // build / ship: click a highlighted node's oversized hit circle
+  // build / ship: click a highlighted node's oversized hit circle. Shipping is
+  // two-stage — an origin click leaves pending 'ship' and lights the destination
+  // bays, which the next loop iteration clicks the same way.
   const node = page.locator('#svg [data-hit-node]').first();
   await expect(node).toBeAttached();
   await node.click({ force: true });

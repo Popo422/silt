@@ -6,17 +6,30 @@ import { test, expect } from '@playwright/test';
 
 // Watch mode deliberately ignores the speed setting — the captions are the whole
 // point of the mode and they need time to be read, so a full 8-round demo runs
-// about two minutes no matter what the toggle says — the teaching intro alone is
-// ~50s, and each caption is held long enough to actually be read. Tests that wait for it to
-// finish have to budget for that; tests that only need it RUNNING should assert
-// on progress and move on.
-const FULL_DEMO_MS = 150_000;
+// well over two minutes no matter what the toggle says — the teaching intro alone
+// is ~130s, and each caption is held long enough to actually be read. Tests that
+// wait for it to finish have to budget for that; tests that only need it RUNNING
+// should assert on progress and move on. Measured ~190s end to end on a slow box,
+// so the budget is generous — a demo that genuinely stalls fails the assertion,
+// not the clock.
+const FULL_DEMO_MS = 240_000;
 
 const boot = async (page) => {
   await page.goto('/index.html');
   await page.evaluate(() => window.SILT.ready);
   await page.evaluate(() => window.SILT.setSpeed('off'));
 };
+
+// Commit and clear whatever prompt the program raises so the round advances.
+// Survey opens a keep-1-of-3 picker for the human, so a bare commit() parks
+// resolution and the round never ticks over; autoResolve() dismisses it.
+async function commitRound(page) {
+  await page.evaluate(() => window.SILT.commit());
+  for (let i = 0; i < 4; i++) {
+    if (!await page.evaluate(() => window.SILT.pending())) break;
+    await page.evaluate(() => window.SILT.autoResolve());
+  }
+}
 
 
 test('the menu offers a game you can watch', async ({ page }) => {
@@ -51,6 +64,11 @@ test('the board never waits for a target in watch mode', async ({ page }) => {
 test('narration appears and is themed', async ({ page }) => {
   await boot(page);
   await page.evaluate(() => window.SILT.watch());
+
+  // The reactive beats below (first-death in particular) land in the closing
+  // rounds, ~190s in, so the whole demo has to run. The default 30s test cap
+  // would fire long before the poll's own FULL_DEMO_MS budget was reached.
+  test.setTimeout(FULL_DEMO_MS + 30_000);
 
   const cap = page.locator('#tut');
   await expect(cap).toHaveClass(/watching/);
@@ -125,9 +143,10 @@ test('"play it myself" hands over a real game', async ({ page }) => {
   expect(await page.evaluate(() => window.SILT.demo())).toBeNull();
   expect(await page.evaluate(() => window.SILT.state().players[0].strat)).toBeNull();
   await expect(page.locator('#tut')).not.toHaveClass(/watching/);
-  // And the handed-over game is actually playable.
+  // And the handed-over game is actually playable. Survey opens a keep-1 picker
+  // now, so committing is not enough — the round only advances once it is cleared.
   await page.evaluate(() => window.SILT.program('survey', 'survey'));
-  await page.evaluate(() => window.SILT.commit());
+  await commitRound(page);
   expect(await page.evaluate(() => window.SILT.state().round)).toBe(2);
 });
 
@@ -145,7 +164,7 @@ test('quitting to the menu mid-demo leaves nothing running', async ({ page }) =>
   // A paused demo left running would suspend the next game on a hidden gate.
   await page.evaluate(() => window.SILT.boot(7));
   await page.evaluate(() => window.SILT.program('survey', 'survey'));
-  await page.evaluate(() => window.SILT.commit());
+  await commitRound(page);
   expect(await page.evaluate(() => window.SILT.state().round)).toBe(2);
 });
 
