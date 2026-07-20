@@ -910,19 +910,48 @@
        reads on one line — Guided first (the lead choice) spans the top. */
     .go{flex-direction:column;gap:9px;margin-top:16px}
     .go .btnBig,.go .btnGhost,.go .btnNarrow{width:100%;flex:none}
-    .menuCard{padding:22px 20px}
-    .brand h1{font-size:32px;letter-spacing:.22em}
-    .brand svg{width:40px;height:40px}
-    .tag{font-size:14px;margin-bottom:20px}
+    /* Compact the menu's vertical rhythm on a phone: the full-height content ran
+       ~1100px into a ~770px view, pushing the start buttons below the fold. Tighter
+       gaps and a shorter pitch bring it close to one screen; the card still scrolls
+       if a very short viewport needs it. */
+    .menuCard{padding:16px 16px;max-height:none}
+    .brand{margin-bottom:6px}
+    .brand h1{font-size:28px;letter-spacing:.18em}
+    .brand svg{width:34px;height:34px}
+    .tag{font-size:13px;margin-bottom:14px;line-height:1.45}
+    .fieldset{margin-bottom:12px}
+    .lbl{margin-bottom:5px}
+    .opt{padding:10px 8px}
+    .setupGrid{gap:12px}
+    .opponentsBox{padding:11px 12px}
+    .botRow{padding:8px 10px;margin-bottom:6px}
+    .go{margin-top:12px;gap:8px}
+    .go .btnBig,.go .btnGhost{padding:12px}
     /* collapse the log by default on phones */
     .log{max-height:150px;flex:0 0 auto}
     #legendPane{display:none}
     #legendPane.show{display:block}
     .card{min-width:0;width:calc(100vw - 32px);padding:18px 16px}
-    table{font-size:12px}
-    th,td{padding:5px 4px}
-    #tut{left:10px;right:10px;top:10px;width:auto;padding:13px 15px}
-    #tut p{font-size:12px}
+    /* The score table has 9 columns — too many for a phone, so the last ones
+       (including the Total) were clipped off the right edge. Let it scroll sideways
+       inside its own box, and freeze the name column so you can see whose row you
+       are reading as you scroll to the total. */
+    #final{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px}
+    #final table{font-size:12px;min-width:520px}
+    #final th,#final td{padding:6px 7px;white-space:nowrap}
+    #final th:first-child,#final td:first-child{position:sticky;left:0;
+      background:var(--panel);z-index:1}
+    #final tr.win td:first-child{background:color-mix(in srgb,var(--panel) 82%,var(--gold) 18%)}
+    /* Total column: the number that matters — keep it visible and emphasised. */
+    #final th:last-child,#final td:last-child{font-weight:700;color:var(--gold)}
+    /* The tutorial step box sat at the TOP of the board and hid the delta it is
+       teaching you to read. Anchor it to the BOTTOM of the board instead, compact,
+       so most of the map stays visible above it. */
+    #tut{left:8px;right:8px;top:auto;bottom:8px;width:auto;padding:11px 13px;
+      max-height:46%;overflow-y:auto}
+    #tut h4{font-size:14px}
+    #tut p{font-size:12px;line-height:1.4}
+    #tut .step{font-size:9px}
     /* Must restate: the rule above is later in the cascade than .watching and
        would otherwise drag the caption back to the top of a phone screen. */
     #tut.watching{left:10px;right:10px;top:auto;bottom:10px;width:auto;transform:none}
