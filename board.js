@@ -70,17 +70,82 @@ function hash01(str) {
 // between grid-aligned nodes is what made the board read as a node graph; rivers
 // meander, and the meander is most of the difference.
 export function channelPath(A, B, key) {
+  const { P0, P1, P2, P3 } = channelCurve(A, B, key);
+  return `M${P0.x},${P0.y} C${P1.x},${P1.y} ${P2.x},${P2.y} ${P3.x},${P3.y}`;
+}
+
+// The centreline control points of a channel, shared by the stroke path and the
+// tapered ribbon so both trace the exact same meander. Pulled out of channelPath
+// so the ribbon can sample the curve without re-deriving the wobble.
+function channelCurve(A, B, key) {
   const dx = B.x - A.x, dy = B.y - A.y;
   const len = Math.hypot(dx, dy) || 1;
   const nx = -dy / len, ny = dx / len;                 // perpendicular
-  // Two control points pushed to opposite sides give an S-curve, which reads as a
-  // natural channel; a single offset just looks like a bent pipe.
   const a = (hash01(key) - 0.5) * 2;
   const b = (hash01(key + 'b') - 0.5) * 2;
   const amp = Math.min(2.6, len * 0.16);
-  const c1 = { x: A.x + dx * 0.30 + nx * amp * a, y: A.y + dy * 0.30 + ny * amp * a };
-  const c2 = { x: A.x + dx * 0.70 + nx * amp * b, y: A.y + dy * 0.70 + ny * amp * b };
-  return `M${A.x},${A.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${B.x},${B.y}`;
+  return {
+    P0: { x: A.x, y: A.y },
+    P1: { x: A.x + dx * 0.30 + nx * amp * a, y: A.y + dy * 0.30 + ny * amp * a },
+    P2: { x: A.x + dx * 0.70 + nx * amp * b, y: A.y + dy * 0.70 + ny * amp * b },
+    P3: { x: B.x, y: B.y },
+    nx, ny, len,
+  };
+}
+
+// A point on the cubic Bézier at parameter t, and the unit normal there. Used to
+// walk the two banks of a tapered channel.
+function bezierAt(c, t) {
+  const u = 1 - t, tt = t * t, uu = u * u;
+  const w0 = uu * u, w1 = 3 * uu * t, w2 = 3 * u * tt, w3 = tt * t;
+  const x = w0 * c.P0.x + w1 * c.P1.x + w2 * c.P2.x + w3 * c.P3.x;
+  const y = w0 * c.P0.y + w1 * c.P1.y + w2 * c.P2.y + w3 * c.P3.y;
+  // Derivative for the tangent → normal. Falls back to the chord normal at the
+  // degenerate ends where the derivative can vanish.
+  const d0 = 3 * uu, d1 = 6 * u * t, d2 = 3 * tt;
+  let dxv = d0 * (c.P1.x - c.P0.x) + d1 * (c.P2.x - c.P1.x) + d2 * (c.P3.x - c.P2.x);
+  let dyv = d0 * (c.P1.y - c.P0.y) + d1 * (c.P2.y - c.P1.y) + d2 * (c.P3.y - c.P2.y);
+  let dl = Math.hypot(dxv, dyv);
+  if (dl < 1e-4) { dxv = c.nx; dyv = c.ny; dl = 1; }
+  return { x, y, nx: -dyv / dl, ny: dxv / dl };
+}
+
+// A channel as a TAPERED WATERWAY rather than a constant-width stroke. This is
+// what makes it read as a river instead of a pipe: a real distributary is narrow
+// upstream and fans wider as it nears the sea, and its banks are ragged, not
+// parallel rails. So the ribbon walks the same meander channelPath draws, but the
+// half-width grows from wUp at the upstream node to wDown at the downstream one,
+// and a deterministic per-station wobble (seeded off the key, so it never jitters
+// on repaint — same rule as the meander) roughens each bank independently.
+//
+// Returns a closed path string: down one bank, across the mouth, back up the
+// other. Filled with the depth texture, so depth still carries the core read via
+// the overall width while the SHAPE finally looks like moving water.
+export function channelRibbon(A, B, key, wUp, wDown, steps = 14) {
+  const c = channelCurve(A, B, key);
+  const left = [], right = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const p = bezierAt(c, t);
+    // Half-width eased downstream. smootherstep keeps the banks from kinking at
+    // the ends where a linear ramp would show a corner.
+    const e = t * t * t * (t * (t * 6 - 15) + 10);
+    const hw = wUp + (wDown - wUp) * e;
+    // Ragged banks: a small deterministic wobble per side, damped to zero at both
+    // node ends so the ribbon still meets each node cleanly and the hit-target
+    // (which follows the centreline) stays under the water.
+    const taper = Math.sin(Math.PI * t);              // 0 at ends, 1 mid-channel
+    // Raggedness scales with the channel's own width, so a wide deep channel gets
+    // a wide meandering bank and a thread stays tight — a fixed wobble made the
+    // narrow channels look torn. Each bank wobbles independently.
+    const rag = (0.5 + hw) * 0.75;
+    const wob = (hash01(`${key}~${i}`) - 0.5) * rag * taper;
+    const wobR = (hash01(`${key}=${i}`) - 0.5) * rag * taper;
+    left.push({ x: p.x + p.nx * (hw + wob),  y: p.y + p.ny * (hw + wob) });
+    right.push({ x: p.x - p.nx * (hw + wobR), y: p.y - p.ny * (hw + wobR) });
+  }
+  const pts = left.concat(right.reverse());
+  return 'M' + pts.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join('L') + 'Z';
 }
 
 // Stop a channel at the edge of each node instead of running to its centre.
@@ -111,6 +176,29 @@ function ensureDefs(svg) {
     defs.appendChild(pat);
   }
 
+  // Soft edge for the landmass and the channel banks. A hard vector outline read
+  // as cut paper; a little blur turns it into a silty shoreline where water and
+  // ground meet. stdDeviation is in user units (the 0..100 board space).
+  const soft = el('filter', { id: 'bankSoft', x: '-8%', y: '-8%', width: '116%', height: '116%' });
+  soft.appendChild(el('feGaussianBlur', { in: 'SourceGraphic', stdDeviation: '0.7' }));
+  defs.appendChild(soft);
+
+  // Vertical wash over the terrain: cooler and darker toward the sea, warm and dry
+  // toward the source. Multiplied over the land texture so the whole delta has a
+  // sense of descending into water rather than being one flat sheet.
+  const damp = el('linearGradient', { id: 'deltaDamp', x1: '0', y1: '0', x2: '0', y2: '1' });
+  damp.appendChild(el('stop', { offset: '0%',  'stop-color': '#6b5c3e', 'stop-opacity': '0' }));
+  damp.appendChild(el('stop', { offset: '55%', 'stop-color': '#3f4a3f', 'stop-opacity': '0.16' }));
+  damp.appendChild(el('stop', { offset: '100%', 'stop-color': '#20302f', 'stop-opacity': '0.4' }));
+  defs.appendChild(damp);
+
+  // Deep-water glow, laid along a channel to give the deepest routes a lit,
+  // navigable-water feel instead of flat teal.
+  const glow = el('linearGradient', { id: 'deepGlow', x1: '0', y1: '0', x2: '0', y2: '1' });
+  glow.appendChild(el('stop', { offset: '0%',  'stop-color': '#7fe4d6', 'stop-opacity': '0' }));
+  glow.appendChild(el('stop', { offset: '100%', 'stop-color': '#7fe4d6', 'stop-opacity': '0.5' }));
+  defs.appendChild(glow);
+
   // An empty node is a printed depression in the board — a space waiting for a
   // piece — not another filled circle. A radial gradient darkening toward the
   // rim does the job of an inset shadow at a fraction of the cost of an SVG
@@ -124,6 +212,49 @@ function ensureDefs(svg) {
   svg.appendChild(defs);
 }
 
+// The painted delta floodplain the channels run over. This is a single generated
+// board-base image (gen-assets.mjs, batch `basemap`) — a top-down painting of the
+// whole delta: dry upland high, floodplain and marsh low, dissolving into the sea
+// along the bottom coast. Before this the channels floated on flat parchment and
+// the board read as a node graph on paper; a painted ground under them is what
+// turns it into a map.
+//
+// It's a PNG rather than hand-drawn SVG on purpose: a floodplain is exactly the
+// kind of organic, painterly surface a generator does far better than a bezier
+// hull, and it costs one image, not a page of path data. The channels stay SVG —
+// they change depth, die, and light up on click every turn, which a baked image
+// cannot do — so the split is "painted ground, live water".
+//
+// Non-interactive and at the very back (pointer-events off), so every existing
+// click target — nodes, channels, cubes — still lands exactly as before. If the
+// image is missing the board simply falls back to the parchment underneath, which
+// is what shipped before, so this can never leave the board unplayable.
+const BASEMAP = './assets/art/basemap.png';
+
+function drawTerrain(svg) {
+  const g = el('g', { class: 'terrain', 'pointer-events': 'none' });
+
+  // Drawn slightly past the 0..100 layout box so the painted coast bleeds off the
+  // edges instead of showing a seam. preserveAspectRatio slice keeps it filling
+  // the frame at any board aspect.
+  const img = el('image', {
+    href: BASEMAP, x: -8, y: -8, width: 116, height: 116,
+    preserveAspectRatio: 'xMidYMid slice',
+  });
+  // If the base image 404s, drop it so the parchment ground shows through rather
+  // than a broken-image glyph.
+  img.addEventListener('error', () => img.remove(), { once: true });
+  g.appendChild(img);
+
+  // Coast vignette: pull the eye to the delta and seat the edge nodes on darker
+  // ground. Cheap, and it survives a missing base image.
+  g.appendChild(el('rect', {
+    x: -8, y: -8, width: 116, height: 116, fill: 'url(#deltaDamp)',
+  }));
+
+  svg.appendChild(g);
+}
+
 // ctx carries everything this renderer needs from the UI, so it reads no globals:
 //   { svg, g, human, playerColors, theme, pendingAction, highlight,
 //     artImage, ico, nodeLabel, ART }
@@ -132,6 +263,7 @@ export function drawBoard(ctx) {
           pendingAction, aimNode, highlight: hl, shipRoutes: routes, artImage, ico, nodeLabel, ART } = ctx;
   svg.innerHTML = '';
   ensureDefs(svg);
+  drawTerrain(svg);                                    // land first, everything sits on it
   // Crosshair while aiming so the board reads as "click a target", not "drag me".
   svg.classList.toggle('aiming', !!pendingAction);
   const owner = {};
@@ -174,20 +306,29 @@ export function drawBoard(ctx) {
     const [A, B] = insetEnds(A0, B0, insetRadius(a), insetRadius(b));
     const dredgeable = pendingAction === 'dredge' && d > 0 && d < TUNING.maxDepth;
 
-    // Channels are painted ribbons of water texture, not coloured strokes. Width
-    // still carries depth — that read is the game's core signal and must survive
-    // even if a texture fails to load.
-    // Narrower than the first pass: at 1.5+d*0.85 the deep channels nearly touched
-    // the node rings and the board felt congested. Depth still spans a 2.4x range,
-    // which is what carries the read.
-    const w = d === 0 ? 1.05 : 1.05 + d * 0.62;
-    const pathD = channelPath(A, B, k);
+    // Channels are TAPERED waterways, not constant-width strokes: narrow where they
+    // leave the upstream node and wider as they near the sea, so the delta reads as
+    // water fanning out to the bay instead of a lattice of equal pipes. Depth still
+    // carries the core read — a deeper channel is wider at both ends — but the taper
+    // is what makes it look like a river. See channelRibbon.
+    //
+    // Half-widths, not full: the ribbon is built from a centreline. Downstream end
+    // runs ~1.5x the upstream so the fan is visible without the deep channels
+    // touching the node rings.
+    const base = d === 0 ? 0.5 : 0.52 + d * 0.31;      // depth still spans ~2.4x
+    // Strong taper: downstream runs nearly double the upstream width, so each
+    // channel visibly widens toward the sea and the board reads as a fanning delta
+    // rather than a lattice of equal bands.
+    const wUp = base * 0.55, wDown = base * 1.35;
+    const pathD = channelPath(A, B, k);                 // centreline: hit-target, routes, tolls
+    const ribbon = channelRibbon(A, B, k, wUp, wDown);  // the painted water body
 
-    // Dark bed under every channel: gives the ribbon an edge against the parchment
-    // and keeps a dead channel visible as a scar rather than vanishing.
+    // Dark bed under every channel: an eroded bank shadow that gives the water an
+    // edge against the ground and keeps a dead channel visible as a scar. Softened
+    // and slightly wider than the water so it reads as a shoreline, not an outline.
     svg.appendChild(el('path', {
-      d: pathD, fill: 'none', stroke: 'rgba(28,22,14,.55)',
-      'stroke-width': w + 0.5, 'stroke-linecap': 'round',
+      d: channelRibbon(A, B, k, wUp + 0.35, wDown + 0.45),
+      fill: 'rgba(28,22,14,.5)', filter: 'url(#bankSoft)',
     }));
 
     // The number on a channel and the coloured ring around it are the two things
@@ -208,10 +349,11 @@ export function drawBoard(ctx) {
             + `end while it stays deep.`
           : ' Unclaimed — dredge it to collect a toll from everyone who passes.');
 
+    // The water body: the tapered ribbon filled with the depth texture. This is the
+    // .ch element the rest of the app keys off, so it keeps every data attribute and
+    // the tooltip; only its geometry changed from a stroked line to a filled shape.
     svg.appendChild(el('path', {
-      d: pathD, fill: 'none',
-      stroke: `url(#tile${d})`,
-      'stroke-width': w, 'stroke-linecap': 'round',
+      d: ribbon, fill: `url(#tile${d})`, stroke: 'none',
       opacity: d === 0 ? 0.9 : 1,
       'data-ch': k, 'data-depth': d, 'data-rights': g.rights[k] ?? '',
       'data-tip-title': d === 0 ? 'Dead channel' : `Channel — depth ${d}`,
@@ -222,16 +364,26 @@ export function drawBoard(ctx) {
     // Depth tint over the texture. The tiles alone are too similar in value at
     // board scale; this restores the at-a-glance read the flat colours had.
     svg.appendChild(el('path', {
-      d: pathD, fill: 'none', stroke: depthColor(d),
-      'stroke-width': w, 'stroke-linecap': 'round',
+      d: ribbon, fill: depthColor(d), stroke: 'none',
       opacity: d === 0 ? 0.34 : 0.26,
       'mix-blend-mode': 'overlay',
     }));
 
+    // Deep water catches the light down the centreline: a thin bright core on the
+    // deepest channels so navigable water reads as lit rather than flat teal. Only
+    // depth 3 — shallower channels stay matte, which sharpens the depth read.
+    if (d >= 3) {
+      svg.appendChild(el('path', {
+        d: pathD, fill: 'none', stroke: 'url(#deepGlow)',
+        'stroke-width': base * 0.8, 'stroke-linecap': 'round',
+        opacity: 0.55, filter: 'url(#bankSoft)',
+      }));
+    }
+
     if (dredgeable) {
       svg.appendChild(el('path', {
         d: pathD, fill: 'none', stroke: 'var(--gold)',
-        'stroke-width': w + 0.35, 'stroke-linecap': 'round',
+        'stroke-width': base * 2 + 0.35, 'stroke-linecap': 'round',
         opacity: 0.75, class: 'pulse',
       }));
     }
@@ -244,7 +396,7 @@ export function drawBoard(ctx) {
     // of the time — so the depth number and the owner's marker, the two things
     // players ask about first, had no way to explain themselves.
     const hit = el('path', { d: pathD, fill: 'none',
-      stroke: 'transparent', 'stroke-width': Math.max(5, w + 3),
+      stroke: 'transparent', 'stroke-width': Math.max(5, base * 2 + 3),
       'pointer-events': 'stroke',
       'data-tip-title': d === 0 ? 'Dead channel' : `Channel — depth ${d}`,
       'data-tip': tip,

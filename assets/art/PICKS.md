@@ -16,6 +16,44 @@ seeds are deterministic, so a rerun gives the same images.
 | `art-grain.png` | `good-grain-1` | reads as grain by shape AND colour, distinct from timber |
 | `art-salt.png` | `good-salt-1` | pale basket, distinct from the other two at small size |
 | `art-paper.png` | `paper-washed-2` | cleanest texture, no compass rose or fold lines |
+| `basemap.png` | `basemap-1` (2nd batch) | the painted delta ground the channels run over — sea band along the bottom where the bays are, ochre floodplain up top where the river starts, mangrove coast between. See below. |
+
+## The board base (`basemap.png`)
+
+The single biggest change since the first art pass. The board used to be flat
+parchment (`art-paper` stretched under everything) with the channels floating on
+beige — it read as a node graph on paper. `basemap.png` is a painted top-down
+delta the live SVG channels run OVER (`drawTerrain` in board.js), so the board is
+finally a map: dry land where the river starts, sea where it ends.
+
+Two batches. The first asked for a "top-down aerial painting of the Manila Bay
+delta" and got exactly what PICKS warned about below: rendered "Manila Bay" text,
+a compass rose, boats, and **its own inked rivers** — which fight the game's live
+channels and lie about the board. The word "map" pulls in map furniture.
+
+The second batch reframed it as a "soft muted painted ground TEXTURE ... no rivers,
+no channels" with the sea as a bottom band. Judged composited UNDER the real
+channels, not on its own — a base that looks great alone but competes with the
+linework is useless here.
+
+### Model tier
+
+The final `basemap.png` is **FLUX.2-pro**, not schnell. Worth the note:
+
+- **schnell** (draft, ~$0.003/img) — fine for roughing out the composition, but too
+  crude and saturated for the ground.
+- **FLUX.1.1-pro** — sharp and detailed, but reads as a *photograph of a beach*, not
+  a painted board. Wrong medium.
+- **FLUX.2-pro** — nailed the STYLE brief: matte hand-painted board-game look, warm
+  parchment palette, muted enough to sit under the channels. This is the winner.
+
+FLUX.1-dev is **not** serverless on this account (needs a paid dedicated endpoint),
+so it is not wired. Use `--pro` (FLUX.1.1-pro) or `--pro2` (FLUX.2-pro) for quality.
+Note FLUX.2 has no `negative_prompt` param — say what you don't want in the prompt.
+
+The channels themselves stay live SVG, NOT baked into this image: they change depth,
+silt up, die, and light up on click every turn. The split is "painted ground, live
+water".
 
 ## Cut, and why
 

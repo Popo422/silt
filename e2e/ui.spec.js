@@ -565,10 +565,12 @@ test.describe('board is a river, not a graph', () => {
     await open(page);
     await page.locator('#btnPlay').click();
     const channels = await page.evaluate(() => Object.keys(window.SILT.state().depth).length);
+    // Channels are FILLED tapered ribbons now, not stroked lines — the water
+    // widens toward the sea, which a constant-width stroke cannot do. The read we
+    // still assert is the same: each .ch is painted with the pattern for its depth.
     const fills = await page.locator('.ch').evaluateAll(
-      els => els.map(e => e.getAttribute('stroke')));
+      els => els.map(e => e.getAttribute('fill')));
     expect(fills).toHaveLength(channels);
-    // Each must reference the pattern matching its own depth.
     const depths = await page.locator('.ch').evaluateAll(
       els => els.map(e => e.dataset.depth));
     for (let i = 0; i < fills.length; i++) {
@@ -587,12 +589,17 @@ test.describe('board is a river, not a graph', () => {
   test('channels curve rather than running straight', async ({ page }) => {
     await open(page);
     await page.locator('#btnPlay').click();
-    // A straight line between two points has no control points. Every channel
-    // should be a cubic bezier — that meander is most of what stopped this
-    // looking like a network diagram.
+    // The ribbon is a filled polygon sampled ALONG the meandering centreline, so
+    // it is not a cubic path string — but a straight channel would be a thin quad
+    // (a handful of points), while a curved, ragged, tapered one has many. Every
+    // channel should carry the sampled meander: well over a dozen vertices. That
+    // wobble is most of what stopped this looking like a network diagram.
     const channels = await page.evaluate(() => Object.keys(window.SILT.state().depth).length);
     const curved = await page.locator('.ch').evaluateAll(
-      els => els.filter(e => (e.getAttribute('d') || '').includes('C')).length);
+      els => els.filter((e) => {
+        const d = e.getAttribute('d') || '';
+        return (d.match(/L/g) || []).length >= 12;
+      }).length);
     expect(curved).toBe(channels);
   });
 
@@ -620,9 +627,12 @@ test.describe('board is a river, not a graph', () => {
     await page.locator('[data-act="survey"]').click();   // repaint
     const dead = page.locator('.ch[data-depth="0"]').first();
     await expect(dead).toBeAttached();
-    // Silting is the whole premise; it must be visible, not merely absent.
-    expect(await dead.getAttribute('stroke')).toBe('url(#tile0)');
-    expect(Number(await dead.getAttribute('stroke-width'))).toBeGreaterThan(0.5);
+    // Silting is the whole premise; it must be visible, not merely absent. The
+    // dead channel is still a painted ribbon — filled with the dried-bed tile —
+    // just at the narrowest width, so it reads as a scar rather than water.
+    expect(await dead.getAttribute('fill')).toBe('url(#tile0)');
+    const d = await dead.getAttribute('d');
+    expect(d, 'dead channel still has a ribbon body').toContain('L');
   });
 
   test('water tiles actually load', async ({ page }) => {

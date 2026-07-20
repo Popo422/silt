@@ -2,10 +2,15 @@
 //
 // Usage:
 //   node gen-assets.mjs                 list batches, cost estimate, do nothing
-//   node gen-assets.mjs bg              generate one batch
+//   node gen-assets.mjs bg              generate one batch (schnell — fast, cheap draft)
 //   node gen-assets.mjs bg goods        several batches
-//   node gen-assets.mjs bg --dev        final quality (FLUX.1-dev, ~9x the cost)
+//   node gen-assets.mjs bg --pro        higher quality (FLUX.1.1-pro, serverless)
+//   node gen-assets.mjs bg --pro2       best quality (FLUX.2-pro, slower, serverless)
 //   node gen-assets.mjs bg --n=4        four variations of each prompt
+//
+// Note: FLUX.1-dev is NOT serverless on this account — it needs a paid dedicated
+// endpoint spun up by hand, so it is not wired here. FLUX.1.1-pro and FLUX.2-pro
+// ARE serverless and are a big step up from schnell, so they are the quality tiers.
 //
 // Output lands in assets/gen/<batch>/ plus a contact sheet at assets/gen/index.html
 // that shows every result AT ACTUAL BOARD SIZE. That last part matters more than it
@@ -24,9 +29,16 @@ if (!KEY) {
   process.exit(1);
 }
 
+// steps is only sent when set: the pro models run their own schedule and reject an
+// explicit steps outside their range, whereas schnell needs its 4. cost is a rough
+// per-image estimate for the run summary, not billed here.
 const MODELS = {
-  schnell: { id: 'black-forest-labs/FLUX.1-schnell', steps: 4,  cost: 0.0027 },
-  dev:     { id: 'black-forest-labs/FLUX.1-dev',     steps: 28, cost: 0.025  },
+  schnell: { id: 'black-forest-labs/FLUX.1-schnell', steps: 4, cost: 0.0027 },
+  pro:     { id: 'black-forest-labs/FLUX.1.1-pro',   cost: 0.04 },
+  // FLUX.2 folds negatives into the main prompt and 400s on a negative_prompt
+  // param, so noNeg drops it for this tier. Say what you DON'T want in the prompt
+  // itself instead (the batch prompts already do — "no boats, no text, ...").
+  pro2:    { id: 'black-forest-labs/FLUX.2-pro',     cost: 0.06, noNeg: true },
 };
 
 // ---------------------------------------------------------------- style
@@ -145,8 +157,61 @@ const TILE = (subject) =>
   + `no objects, no boats, no buildings, no people, no text, no border, `
   + `warm aged parchment palette, sepia ochre umber and muted teal, subtle paper grain`;
 
+// The painted board base — the single biggest visual win left. A top-down
+// painting of the whole delta floodplain that the live SVG channels run OVER
+// (see drawTerrain in board.js). It replaces flat parchment with real ground:
+// dry upland across the top where the source sits, floodplain and marsh through
+// the middle, and open sea along the bottom where the three bays are.
+//
+// This is specifically the Pasig–Pampanga delta into Manila Bay, c. 1400s, before
+// Spanish contact (see theme.js) — NOT a generic tropical delta. So the brief asks
+// for the things that place actually is: nipa palm and mangrove marsh, warm
+// estuary mud, the muted light of Manila Bay. Getting the setting into the ground
+// is what makes the board feel like ANOD and not a stock river map.
+//
+// The hard requirement is that it must NOT paint its own rivers. The channels are
+// game state — they change depth, silt up, and die every turn — so they're drawn
+// live on top; a baked river would fight them and lie about the board. So the
+// brief asks for a floodplain with the water LEFT OUT, and pushes channels,
+// rivers, and streams into the negatives hard. Muted so it sits UNDER linework and
+// never competes with it.
+// Framed as a "painted surface / ground texture", NOT an "aerial map": the map
+// framing is what pulled in place labels, a compass rose, and inked rivers in the
+// first pass (exactly what PICKS.md warns about — FLUX draws the furniture of a
+// map when you say "map"). Asking for a soft painted TEXTURE with a sea band keeps
+// the setting without the cartography that fights the live channels.
+const BASEMAP =
+  `a soft muted painted ground texture of a tropical estuary floodplain, `
+  + `pre-colonial Philippines, seen straight down from above: `
+  + `warm ochre and tan earth filling the top two thirds, patches of dusty green `
+  + `nipa palm and mangrove scrub, giving way to dark wet mudflats and a pale sandy `
+  + `shore, then calm shallow teal-green sea filling the bottom edge, `
+  + `smooth blurred painterly wash, very soft edges, hazy, low saturation, low `
+  + `contrast, dim and atmospheric, out of focus, a quiet background surface, `
+  + `even flat overhead lighting, no light source, no shadows, no vignette, `
+  + `absolutely no rivers, no channels, no streams, no water lines cutting through `
+  + `the land, no boats, no buildings, no people, no islands, no roads, no text, `
+  + `no labels, no map grid, no compass, no border, ${STYLE}`;
+
+const BASEMAP_NEG =
+  'river, rivers, channel, channels, stream, streams, creek, blue water lines, '
+  + 'winding water, waterway, tributary, boats, ships, canoe, buildings, houses, '
+  + 'huts, roads, islands, grid lines, map grid, compass rose, cartouche, '
+  + 'text, letters, words, labels, place names, sharp focus, crisp detail, '
+  + 'high contrast, vivid, saturated, neon, photograph, 3d render, glossy, '
+  + 'frame, border, vignette';
+
 // ---------------------------------------------------------------- batches
 const BATCHES = {
+  // The painted delta ground. Wide-ish to match the board's shape. Several
+  // variations because the winner is judged composited under the real channels,
+  // not on its own — pick the one that stays quiet behind the linework.
+  basemap: {
+    size: [1024, 1024],
+    neg: BASEMAP_NEG,
+    prompts: { 'basemap': BASEMAP },
+  },
+
   // The biggest visual win by far, and the thing that answers "why is it gloomy".
   // Dropped 'parchment-map' and 'delta-map' from the first pass: a decorated map
   // fights the board's own channels and nodes, and both came back with garbled
@@ -367,7 +432,9 @@ const BATCHES = {
 const args = process.argv.slice(2);
 const flags = args.filter(a => a.startsWith('--'));
 const want = args.filter(a => !a.startsWith('--'));
-const model = flags.includes('--dev') ? MODELS.dev : MODELS.schnell;
+const model = flags.includes('--pro2') ? MODELS.pro2
+  : flags.includes('--pro') ? MODELS.pro
+  : MODELS.schnell;
 const variations = Number(flags.find(f => f.startsWith('--n='))?.slice(4) ?? 1);
 
 if (!want.length) {
@@ -379,8 +446,10 @@ if (!want.length) {
     console.log(`  ${name.padEnd(9)} ${String(n).padStart(2)} prompts  ${Object.keys(b.prompts).join(', ')}`);
   }
   console.log(`\n  all ${total} prompts x ${variations} = ${total * variations} images`);
-  console.log(`  schnell $${(total * MODELS.schnell.cost).toFixed(2)}   dev $${(total * MODELS.dev.cost).toFixed(2)}`);
-  console.log('\n  node gen-assets.mjs bg          # start here\n');
+  console.log(`  schnell $${(total * MODELS.schnell.cost).toFixed(2)}   `
+    + `--pro $${(total * MODELS.pro.cost).toFixed(2)}   `
+    + `--pro2 $${(total * MODELS.pro2.cost).toFixed(2)}`);
+  console.log('\n  node gen-assets.mjs bg          # start here (schnell draft)\n');
   process.exit(0);
 }
 
@@ -395,8 +464,13 @@ async function generate(prompt, w, h, seed, tries = 3, neg = NEG) {
       method: 'POST',
       headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: model.id, prompt, negative_prompt: neg,
-        width: w, height: h, steps: model.steps, n: 1, seed,
+        model: model.id, prompt,
+        width: w, height: h, n: 1, seed,
+        // FLUX.2 has no negative_prompt param; everything else takes one.
+        ...(model.noNeg ? {} : { negative_prompt: neg }),
+        // Only schnell takes an explicit step count; the pro models run their own
+        // schedule and 400 on a steps value outside their range.
+        ...(model.steps ? { steps: model.steps } : {}),
       }),
     });
     if (res.ok) {
