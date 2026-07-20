@@ -4,6 +4,14 @@ import { TUNING, buildCost, buildTargets, buildStepCost, dredgeTargets, shipOpti
   canReachMouth, contractFit, score } from './engine.js';
 import { chKey, NODE_BY_ID, GOODS, MOUTHS } from './graph.js';
 
+// Filled by mcts.js when it loads (see registerMcts). Declared here, above STRATEGIES,
+// so the object exists before the `mcts` strategy or chooseTarget ever read it. Until
+// mcts.js registers, `program` throws — a clear error beats a silent wrong bot.
+const _hooks = {
+  program: () => { throw new Error('mcts module not loaded — import ./mcts.js'); },
+  choose: null,
+};
+
 // --- opponent model -------------------------------------------------------
 // The bots used to read only their OWN board — no sense of the score race or who
 // held which bay — so a human just kept delivering and won uncontested. These
@@ -199,7 +207,21 @@ export const STRATEGIES = {
     }
     return prog.slice(0, 2);
   },
+
+  // MCTS: the search opponent. Instead of an if/else ladder it plays the game
+  // forward in its head (see mcts.js) and keeps the turn whose playouts win by the
+  // widest margin. Resolved through the mutable `_hooks` holder declared at the top
+  // of this file, which mcts.js fills once loaded — the ES-module cycle (mcts.js
+  // imports STRATEGIES) is fine because neither side calls the other at load time.
+  mcts(g, p) {
+    return _hooks.program(g, p);
+  },
 };
+
+export function registerMcts({ program, choose }) { _hooks.program = program; _hooks.choose = choose; }
+export function mctsChoiceFor(g, p, action) {
+  return _hooks.choose ? _hooks.choose(g, p, action) : chooseTarget(g, p, action, 'smart');
+}
 
 // Channels worth owning: damaged (so dredging is legal), not already ours, and
 // carrying traffic other players depend on.
@@ -279,6 +301,9 @@ function shipValue(g, p, o) {
 
 // Given a committed action, choose the concrete target at resolution time.
 export function chooseTarget(g, p, action, strat) {
+  // The search bot already decided its concrete targets during the rollout; honour
+  // them so the resolver runs the exact move the search evaluated, not a re-pick.
+  if (strat === 'mcts') return mctsChoiceFor(g, p, action);
   switch (action) {
     case 'ship': {
       const opts = shipOptions(g, p);
@@ -348,3 +373,9 @@ function scoreNode(g, p, id) {
   s -= buildStepCost(g, p, id);
   return s;
 }
+
+// NOTE: the `mcts` strategy needs ./mcts.js to have loaded (it calls registerMcts).
+// ai.js deliberately does NOT import mcts.js — that would form a load-time cycle that
+// hits the const TDZ. Instead each entry point that uses bots imports './mcts.js' for
+// its side effect (see sim.mjs and ui.js). ensureMcts() below is a convenience for
+// callers who'd rather not remember the bare import.

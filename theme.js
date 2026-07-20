@@ -105,6 +105,8 @@ export const THEME = {
                   desc: 'three balangay by the bay, never leaves' },
     defector:   { name: 'Taga-labas',    gloss: 'outsider',
                   desc: 'never digs, rides on everyone else\'s work' },
+    mcts:       { name: 'Ang Matalino',  gloss: 'the clever one',
+                  desc: 'thinks moves ahead — plays out the game before it acts (hard)' },
   },
 
   // --- palette --------------------------------------------------------------
@@ -187,6 +189,7 @@ export const PLAIN = {
     expander:   { name: 'expander',   gloss: '', desc: 'builds relentlessly, thin on maintenance' },
     turtle:     { name: 'turtle',     gloss: '', desc: 'three stations by a mouth, never leaves' },
     defector:   { name: 'defector',   gloss: '', desc: 'never dredges, rides on everyone else' },
+    mcts:       { name: 'clever',     gloss: '', desc: 'searches moves ahead — plays the game out before acting (hard)' },
   },
   palette: {
     '--bg':'#212d33','--panel':'#29373e','--panel2':'#243036','--line':'#3d515a',

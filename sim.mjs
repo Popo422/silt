@@ -1,6 +1,7 @@
 // SILT — headless simulator. Answers the balance questions with numbers.
 import { newGame, execute, siltPhase, bayBonusPhase, regrowPhase, upkeepPhase, score, seatOrder, TUNING } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
+import './mcts.js';   // side effect: registers the `mcts` search strategy with ai.js
 import { CHANNELS } from './graph.js';
 
 export function playGame(strats, seed) {
@@ -110,6 +111,11 @@ if (process.argv[1]?.endsWith('sim.mjs')) {
   printReport(runSuite({
     'mirror-balanced':  ['balanced', 'balanced', 'balanced'],
     'mirror-smart':     ['smart', 'smart', 'smart'],
+    // The search bot vs the field — the headline benchmark. If mcts stops winning
+    // clearly here, either the rollout budget dropped too low or a rule change made
+    // the game shallower than search can exploit.
+    'mcts-vs-2bal':     ['mcts', 'balanced', 'balanced'],
+    'mcts-vs-smart':    ['mcts', 'smart', 'balanced'],
     'smart-vs-2bal':    ['smart', 'balanced', 'balanced'],
     'smart-vs-turtle':  ['smart', 'turtle', 'balanced'],
     'defector-vs-2':    ['defector', 'balanced', 'balanced'],

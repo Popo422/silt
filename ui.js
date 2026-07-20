@@ -4,6 +4,7 @@ import {
   buildTargets, dredgeTargets, shipOptions, buildCost, buildStepCost, surveyDrawnFor, TUNING,
 } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
+import { setSearchOptions } from './mcts.js';   // registers the `mcts` search strategy + lets us cap its per-move think time
 import { createTutorial, stepText } from './tutorial.js';
 import { createDemo, paintCaption, wireDemo, DEMO_SEED, DEMO_BOTS } from './demo.js';
 import { THEMES, applyTheme, nodeLabel } from './theme.js';
@@ -26,7 +27,7 @@ const HUMAN = 0;
 const PC = ['var(--p0)', 'var(--p1)', 'var(--p2)', 'var(--p3)'];
 const $ = (id) => document.getElementById(id);
 
-const BOT_KEYS = ['balanced', 'tollkeeper', 'steward', 'expander', 'turtle', 'defector'];
+const BOT_KEYS = ['mcts', 'balanced', 'tollkeeper', 'steward', 'expander', 'turtle', 'defector'];
 
 let g, program, picking, pendingAction, seed, queue, tut, config;
 let mtab = 'play';            // active mobile bottom-panel tab (see setTab)
@@ -121,7 +122,8 @@ const artImage = (name, x, y, size) => el('image', {
 // ---------------------------------------------------------------- menu
 
 function buildMenu() {
-  config = { players: 3, rounds: 8, bots: ['tollkeeper', 'balanced', 'expander'] };
+  // Default rival is the clever search bot (ladder bots stay in the dropdown for an easier game).
+  config = { players: 3, rounds: 8, bots: ['mcts', 'balanced', 'expander'] };
 
   const syncBots = () => {
     const n = config.players - 1;
@@ -344,6 +346,7 @@ function resetGame(players, s) {
 
 function start(tutorial, s = Math.floor(Math.random() * 1e9)) {
   TUNING.rounds = config.rounds;
+  setSearchOptions({ timeMs: 300 });   // mcts bot: per-move think cap (~80% win, stays responsive)
   resetGame(config.players, s);
   g.players.forEach((p, i) => {
     p.strat = i === HUMAN ? null : config.bots[i - 1];
