@@ -348,14 +348,14 @@ test.describe('tutorial speaks the active theme', () => {
     expect(ship.title + ship.body, 'ship step must name the themed action')
       .toContain(shipBtn);
 
-    // The second-slot step teaches dredge specifically. It used to list all three
-    // remaining actions and say "anything works", which taught nothing on the one
-    // turn a new player is actually paying attention — so this now asserts the
-    // named action rather than a menu of them.
+    // The second-slot step teaches build specifically. On round one every channel
+    // is at full depth, so dredge has no legal target and just fizzles — so the
+    // tutorial pairs ship with BUILD (expansion), the action that actually works
+    // turn one. This asserts the step names that action, not a menu of options.
     const second = steps.find(s => s.id === 'pick-second');
-    const dredge = await page.evaluate(() => window.SILT.theme().actions.dredge.name);
-    expect(second.title + second.body, 'second step must name the themed dredge action')
-      .toContain(dredge);
+    const build = await page.evaluate(() => window.SILT.theme().actions.build.name);
+    expect(second.title + second.body, 'second step must name the themed build action')
+      .toContain(build);
   });
 
   test('never uses the plain-theme action words while ANOD is active', async ({ page }) => {

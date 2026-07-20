@@ -103,18 +103,22 @@ export const STEPS = [
   },
   {
     id: 'pick-second',
-    title: (T) => `Now choose ${actName(T, 'dredge')}`,
-    body: (T) => `Shipping costs the river depth, so pair it with a repair. `
-        + `${act(T, 'dredge')} deepens one channel AND claims it — after this, other `
-        + `players pay you ${T.terms.toll.name} every time they use that water.`,
-    highlight: () => ({ kind: 'ui', sel: '[data-act="dredge"]' }),
-    // Named, not "anything works". The old step let the player pick any second
-    // action, which taught nothing on the one turn they are really paying
-    // attention. Ship+dredge is the pairing that makes the game legible: you take
-    // from the river, then you give back.
-    requires: 'dredge',
-    check: (g, ui) => ui.program.includes('dredge'),
-    hint: (T) => `Click ${actName(T, 'dredge')} for your second slot.`,
+    title: (T) => `Now choose ${actName(T, 'build')}`,
+    body: (T) => `Pair shipping with expansion. ${act(T, 'build')} raises a new `
+        + `${T.terms.station.name.toLowerCase()} on an empty site next to one you `
+        + `hold — more ${T.terms.station.name.toLowerCase()}s means more goods to `
+        + `carry. Building costs more with each one you own, so the early ones are `
+        + `the cheap ones.`,
+    highlight: () => ({ kind: 'ui', sel: '[data-act="build"]' }),
+    // Ship + Build, not Ship + Dredge. On round one every channel is at full depth,
+    // so Dredge has NO legal target and simply fizzles — the old tutorial taught a
+    // dead move. Build works turn one, teaches "grab land early" (which the game
+    // rewards), and gives a second station to ship from. Dredge is introduced by
+    // the tolls step below, forward-looking, once silt has made a channel worth
+    // repairing.
+    requires: 'build',
+    check: (g, ui) => ui.program.includes('build'),
+    hint: (T) => `Click ${actName(T, 'build')} for your second slot.`,
   },
   {
     id: 'commit',
@@ -122,10 +126,10 @@ export const STEPS = [
     body: (T) => 'Press commit. Everyone reveals at once and resolves in seat order — '
         + 'you cannot change your mind partway through, which is the whole tension '
         + 'of the game. You will be asked to click the board to aim each action. '
-        + `One thing to know before you do: both actions resolve first, and silt `
-        + `settles only after both — so you cannot ${actName(T, 'ship')} a channel `
-        + `and ${actName(T, 'dredge')} it back the same round. The repair always `
-        + `lands a turn behind the damage.`,
+        + `And a rule worth knowing now: both your actions resolve first, then silt `
+        + `settles only after — so you can never ${actName(T, 'ship')} a channel and `
+        + `${actName(T, 'dredge')} it clean again in the same round. Repairs always `
+        + `land a turn behind the damage.`,
     highlight: () => ({ kind: 'ui', sel: '#go' }),
     check: (g, ui) => ui.roundsPlayed >= 1,
     hint: () => 'Press "Commit & resolve", then follow the prompts on the board.',
@@ -145,11 +149,16 @@ export const STEPS = [
   },
   {
     id: 'tolls',
-    title: (T) => `${actName(T, 'dredge')} is how you earn from other people`,
-    body: () => `The dot in your colour marks the channel you claimed. Everyone `
-        + `else pays you to pass through it, and you score it at the end if it is `
-        + `still deep. Repairing the river is not charity — it is rent.`,
-    highlight: () => ({ kind: 'rights' }),
+    title: (T) => `Next round: ${actName(T, 'dredge')} to earn from others`,
+    body: (T) => `Now that channels are shallow, ${act(T, 'dredge')} finally has `
+        + `something to do. It deepens a channel AND claims it — a marker in your `
+        + `colour appears, and everyone else pays you ${T.terms.toll.name} to pass `
+        + `through. Claim the busy water and repairing the river becomes rent, not `
+        + `charity. Watch the "Claimed channels" list to see who holds what.`,
+    // No highlight on a claim marker: nothing is claimed yet this round (we shipped
+    // and built, not dredged), so this teaches Dredge forward-looking, for the round
+    // the player is about to take on their own.
+    highlight: null,
     check: null,
   },
   {

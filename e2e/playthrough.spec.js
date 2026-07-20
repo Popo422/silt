@@ -175,7 +175,8 @@ test.describe('real tutorial — clicks only', () => {
       if (t.id === 'pick-ship') {
         await page.locator('[data-act="ship"]').click();
       } else if (t.id === 'pick-second') {
-        await page.locator('[data-act="dredge"]').click();
+        // Turn one teaches Ship + Build (Dredge has no legal target yet).
+        await page.locator('[data-act="build"]').click();
       } else if (t.id === 'commit') {
         const r0 = await page.evaluate(() => window.SILT.state()?.round);
         await page.locator('#go').click();
