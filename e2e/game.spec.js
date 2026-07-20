@@ -309,6 +309,29 @@ test.describe('dredging rights', () => {
     expect(st.depth).toBe(0);
     expect(st.rights).toBeNull();
   });
+
+  // The board shows only who owns a channel; the side panel's claims list shows the
+  // marker tug-of-war behind it, so a player can see how close a claim is to flipping.
+  test('claims panel lists owned channels and flags a flippable one', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = window.SILT.state();
+      const keys = Object.keys(g.depth);
+      // You own one solidly (2 markers, no rival).
+      const solid = keys[10];
+      g.markers[solid] = { 0: 2 }; g.rights[solid] = 0; g.depth[solid] = 3;
+      // An opponent owns one with 2, you have 1 — one dredge from flipping.
+      const hot = keys[12];
+      g.markers[hot] = { 1: 2, 0: 1 }; g.mostRecent[hot] = 1; g.rights[hot] = 1; g.depth[hot] = 3;
+      window.SILT.program(null, null);
+    });
+    // Two claimed channels appear, and exactly one is flagged flippable.
+    await expect(page.locator('#claims .claim')).toHaveCount(2);
+    await expect(page.locator('#claims .claim.hot')).toHaveCount(1);
+    // The pips encode the counts: the flippable row shows 2 rival + 1 mine = 3 pips.
+    const hotPips = await page.locator('#claims .claim.hot .pip').count();
+    expect(hotPips).toBe(3);
+  });
 });
 
 test.describe('opening draft', () => {

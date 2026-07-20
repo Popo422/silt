@@ -504,6 +504,25 @@
     background:color-mix(in srgb,var(--gold) 15%,transparent);border-radius:5px;
     padding:2px 7px;font-size:12.5px;min-width:30px;text-align:center}
   .ct .cbody b{color:var(--ink);font-weight:600}
+  /* Claimed-channels list: the dredging-rights tug-of-war. Each row is a channel,
+     with a stack of marker pips per contesting player. Reads like tokens on a
+     board, no numbers to parse. */
+  .claim{font-size:12px;padding:6px 0;border-bottom:1px solid var(--line);color:var(--dim);
+    display:flex;align-items:center;gap:8px;cursor:help}
+  .claim:last-child{border-bottom:none}
+  .claim.empty{cursor:default;color:var(--dim2);font-style:italic}
+  .claim.mine{color:var(--ink)}
+  .claim .claimEnds{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    font-variant-numeric:tabular-nums}
+  .claim .claimMarks{display:flex;align-items:center;gap:5px;flex:none}
+  .claim .stack{display:inline-flex;gap:2px}
+  .claim .pip{width:7px;height:9px;border-radius:2px;
+    box-shadow:0 0 0 1px rgba(20,16,10,.5) inset}
+  .claim .vs{font-size:9px;color:var(--dim2);letter-spacing:.05em}
+  /* A channel one dredge from flipping: flag it, and glow if it's contestable. */
+  .claim.hot .claimHot{font-size:8.5px;font-weight:700;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--warn);flex:none}
+  .claim.hot{color:var(--ink)}
   .log{flex:1;overflow-y:auto;padding:9px 15px;font-size:12px;line-height:1.55}
   .log div{color:var(--dim);padding:1px 0}
   .log div.hd{color:var(--ink);font-weight:600;margin-top:7px;border-top:1px solid var(--line);
@@ -969,6 +988,14 @@
     <div class="pane">
       <div class="paneHead"><h3 id="hPlayers">Players</h3></div>
       <div id="pls"></div>
+    </div>
+
+    <!-- CLAIMED CHANNELS — the dredging-rights tug-of-war. The board shows only
+         who owns each channel now; this shows the marker counts, so you can read
+         how safe your claims are and how close a rival's is to flipping. -->
+    <div class="pane" id="claimsPane">
+      <div class="paneHead"><h3 id="hClaims">Claimed channels</h3></div>
+      <div id="claims"></div>
     </div>
 
     <!-- Reference, not per-turn information. Collapsed by default: it taught you

@@ -15,7 +15,7 @@ import { createSpeech } from './speech.js';
 import { ART } from './art.js';
 import { drawBoard as paintBoard, el, insetRadius } from './board.js';
 import {
-  renderContracts, renderPlayers, renderActions, renderSlots, renderAimHint,
+  renderContracts, renderPlayers, renderClaims, renderActions, renderSlots, renderAimHint,
   renderSurvey,
   renderFinalScore, renderActor,
   actionDescriptions, actionTips,
@@ -464,6 +464,36 @@ function render() {
     el: $, players: g.players, human: HUMAN, revealed: committedThisRound,
     colors: PC, T, tuning: TUNING, icon, ico, esc,
   });
+
+  // The claims list: every owned channel, its owner's marker count, and the top
+  // challenger's — so the dredging-rights tug-of-war the board can't show is
+  // readable. Ownership is most-markers (ties to most recent), so "level or one
+  // behind" means one dredge can flip it. Built here where the state lives; panel
+  // renders the prepared list. Sorted yours-first, then most-contested.
+  const claims = Object.keys(g.rights)
+    .filter(k => g.rights[k] !== null && g.depth[k] > 0)
+    .map(k => {
+      const owner = g.rights[k];
+      const marks = g.markers[k] ?? {};
+      const ownerN = marks[owner] ?? 0;
+      let rival = null, rivalN = 0;
+      for (const [idx, cnt] of Object.entries(marks)) {
+        if (+idx !== owner && cnt > rivalN) { rivalN = cnt; rival = +idx; }
+      }
+      const [a, b] = k.split('>');
+      return {
+        key: k, owner, ownerN, rival, rivalN,
+        mine: owner === HUMAN,
+        ownerName: owner === HUMAN ? 'You' : g.players[owner]?.name,
+        rivalName: rival === null ? null : (rival === HUMAN ? 'You' : g.players[rival]?.name),
+        label: `${nodeLabel(T, a)}→${nodeLabel(T, b)}`,
+        takeable: rival !== null && rivalN > 0 && rivalN >= ownerN - 1,
+      };
+    })
+    .sort((x, y) => (y.mine - x.mine)
+      || (y.takeable - x.takeable)
+      || (y.rivalN - x.rivalN));
+  renderClaims({ el: $, claims, colors: PC, T, esc });
 
   const target = aimed();
   renderActions({

@@ -73,6 +73,48 @@ export function renderPlayers({ el, players, human, revealed, colors, T, tuning,
     </div>`).join('');
 }
 
+// The dredging-rights tug-of-war, listed. The board shows only who owns each
+// channel now; this shows the marker counts behind that ownership, so a player can
+// read how safe their own claims are and how close a rival's is to flipping. Ties
+// go to the most recent dredger, so "level on markers" still means takeable.
+//
+// `claims` is prepared by ui.js (which has the game state) as a plain array so this
+// stays a pure renderer: [{ key, label, owner, ownerName, ownerN, rival, rivalName,
+// rivalN, mine, takeable }]. Sorted yours-first, then most-contested.
+export function renderClaims({ el, claims, colors, T, esc }) {
+  const box = el('claims');
+  if (!box) return;
+  if (!claims.length) {
+    box.innerHTML = `<div class="claim empty">No channels claimed yet — `
+      + `${T.actions.dredge.name} one to collect a ${T.terms.toll.name} from everyone who passes.</div>`;
+    return;
+  }
+  box.innerHTML = claims.map(cl => {
+    // Owner cubes, then challenger cubes: a stack of small pips per marker in each
+    // player's colour, so "they have 2, I have 1" reads as two stacks, no numbers.
+    const pips = (n, col) => Array.from({ length: n },
+      () => `<i class="pip" style="background:${col}"></i>`).join('');
+    const rival = cl.rival !== null && cl.rivalN > 0;
+    return `<div class="claim ${cl.mine ? 'mine' : ''} ${cl.takeable ? 'hot' : ''}"
+         data-tip-title="${esc(cl.label)} — ${esc(cl.mine ? 'yours' : cl.ownerName + '’s')}"
+         data-tip="${esc(
+           `${cl.mine ? 'You hold' : cl.ownerName + ' holds'} this with ${cl.ownerN} `
+           + `marker${cl.ownerN === 1 ? '' : 's'}.`
+           + (rival
+             ? ` ${cl.rivalName} ${cl.rivalName === 'You' ? 'have' : 'has'} ${cl.rivalN}` +
+               (cl.takeable ? ' — one more dredge ties and takes it.' : ' — behind on markers.')
+             : ' Dredge it twice and a single counter-dredge cannot take it back.'))}">
+      <span class="claimEnds">${esc(cl.label)}</span>
+      <span class="claimMarks">
+        <span class="stack" style="--c:${colors[cl.owner]}">${pips(cl.ownerN, colors[cl.owner])}</span>
+        ${rival ? `<span class="vs">vs</span>
+          <span class="stack" style="--c:${colors[cl.rival]}">${pips(cl.rivalN, colors[cl.rival])}</span>` : ''}
+      </span>
+      ${cl.takeable ? '<span class="claimHot">flippable</span>' : ''}
+    </div>`;
+  }).join('');
+}
+
 // ---------------------------------------------------------------- action copy
 //
 // Plain-English one-liners. These used to be notation — "+1 lalim · 1g · singil",

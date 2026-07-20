@@ -241,7 +241,7 @@ export function drawBoard(ctx) {
     });
     if (dredgeable) hit.style.cursor = 'pointer';
     hitLayer.push(hit);
-    if (g.rights[k] !== null && d > 0) tolls.push([A, B, g.rights[k], pathD]);
+    if (g.rights[k] !== null && d > 0) tolls.push([A, B, g.rights[k], pathD, k]);
   }
 
   // --- ship route preview
@@ -268,7 +268,7 @@ export function drawBoard(ctx) {
   }
 
   // --- toll markers (above the water)
-  for (const [A, B, o, pathD] of tolls) {
+  for (const [A, B, o, pathD, k] of tolls) {
     // Sit the marker ON the channel by sampling its curve. The straight-line
     // midpoint drifts off the water wherever a channel bends hardest — which is
     // exactly where the marker is most likely to be misread as belonging to a
@@ -297,19 +297,23 @@ export function drawBoard(ctx) {
       svg.appendChild(el('circle', { cx: mx, cy: my, r: 1.62, fill: 'none',
         stroke: 'var(--gold)', 'stroke-width': 0.26, opacity: 0.95 }));
     }
+    // The board shows only WHO owns the channel now — a clean colour dot. The
+    // marker tug-of-war (how many each player has, how close it is to flipping)
+    // lives in the side panel's claims list, so the board stays uncluttered.
+    const marks = g.markers?.[k] ?? {};
+    const ownerN = marks[o] ?? 0;
+    const ownerName = g.players[o]?.name ?? 'Someone';
     svg.appendChild(el('circle', { cx: mx, cy: my, r: 1.25, fill: PC[o],
       stroke: mine ? 'rgba(255,248,230,1)' : 'rgba(255,240,214,.75)',
       'stroke-width': mine ? 0.4 : 0.26, 'data-toll': o,
-      'data-tip-title': mine
-        ? 'You dredged this channel'
-        : `${g.players[o]?.name ?? 'Claimed'} owns this channel`,
+      'data-tip-title': mine ? 'You hold this channel' : `${ownerName} holds this channel`,
       'data-tip': mine
-        ? `Every other player pays you ${TUNING.tollPerShip} gold to ship through `
-          + `here, and it scores you ${TUNING.rightsVP} points at the end if it is `
-          + `still deep.`
-        : `You pay ${g.players[o]?.name ?? 'them'} ${TUNING.tollPerShip} gold to `
-          + `ship through here. It scores them ${TUNING.rightsVP} points at the `
-          + `end if the channel is still deep.`,
+        ? `You hold this with ${ownerN} marker${ownerN === 1 ? '' : 's'}. Others pay `
+          + `${TUNING.tollPerShip} gold to ship through; it scores ${TUNING.rightsVP} `
+          + `if still deep. See the claims list for who is contesting it.`
+        : `${ownerName} holds this with ${ownerN} marker${ownerN === 1 ? '' : 's'}; you `
+          + `pay ${TUNING.tollPerShip} gold to ship through. See the claims list to `
+          + `see how close it is to flipping.`,
       class: hl?.kind === 'rights' ? 'pulse' : '' }));
   }
 
