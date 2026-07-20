@@ -1,9 +1,8 @@
 // SVG element helpers.
 //
-// Pulled out of board.js so frame.js can use them without importing board.js,
-// which imports frame.js back. That cycle worked — ES modules resolve it — but a
-// circular dependency is a trap for whoever edits next, and these two functions
-// belong to neither renderer in particular.
+// Their own module so any renderer can use them without importing board.js and
+// creating a dependency cycle back into it. These two functions belong to no
+// renderer in particular — board.js, bays.js and diagrams.js all reach for them.
 
 const NS = 'http://www.w3.org/2000/svg';
 
