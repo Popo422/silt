@@ -30,6 +30,7 @@ export const TUNING = {
   tollPerShip: 2,           // coins paid to a channel's rights-holder when others ship through
   rightsEnabled: true,      // dredging claims a channel; others pay you to use it
   rightsVP: 2,              // VP per channel you still hold at game end
+  vpNetworkChannel: 1,      // extra VP per channel in your largest CONNECTED run
   // Minimum depth for a claimed channel to score. Was hardcoded as `>= 2` down
   // in score(), while the rulebook printed "depth 2+" from its own literal — two
   // copies of one rule, either of which could be changed without the other.
@@ -106,8 +107,17 @@ export function newGame(playerCount = 3, seed = 12345) {
   const rand = rng(seed);
   const { out, inn } = buildIndex();
 
-  const depth = {}, rights = {};
-  for (const [a, b] of CHANNELS) { depth[chKey(a, b)] = TUNING.maxDepth; rights[chKey(a, b)] = null; }
+  // rights[k]   = current owner index (derived, cached for readers)
+  // markers[k]  = { playerIdx: count } — every Hukay leaves one, and ownership
+  //               goes to whoever has the most, not whoever dredged last. This is
+  //               the Hansa-style "presence on the route" model: dredge a channel
+  //               twice and it stays yours against a single counter-dredge.
+  //               `mostRecent[k]` breaks a marker tie in favour of the last dredger.
+  const depth = {}, rights = {}, markers = {}, mostRecent = {};
+  for (const [a, b] of CHANNELS) {
+    const k = chKey(a, b);
+    depth[k] = TUNING.maxDepth; rights[k] = null; markers[k] = {}; mostRecent[k] = null;
+  }
 
   const cubes = {};
   for (const n of NODES) cubes[n.id] = MOUTHS.includes(n.id) ? 0 : TUNING.cubesPerNode;
@@ -149,12 +159,65 @@ export function newGame(playerCount = 3, seed = 12345) {
 
   return {
     round: 1, phase: 'program', slot: 0, firstPlayer, draftOrder,
-    depth, rights, cubes, players, deck, out, inn,
+    depth, rights, markers, mostRecent, cubes, players, deck, out, inn,
     log: [], events: [], shippedThisRound: new Set(), seed, rand,
   };
 }
 
 export const buildCost = (p) => TUNING.buildBase + p.stations.length;
+
+// Draw the survey cards WITHOUT keeping any, so the human can be shown all three
+// and pick. The chosen resolve then passes them back as choice.drawn. Bots never
+// call this — they draw and auto-keep inside execute() in one step, since they
+// cannot click a picker.
+export function surveyDrawnFor(g) {
+  return Array.from({ length: TUNING.surveyDraw }, () => g.deck.pop()).filter(Boolean);
+}
+
+// Size of the largest connected group among a set of channels. Two channels are
+// connected when they share an endpoint node, so this is a connected-components
+// count over the channel keys — the number the network bonus scores. A lone
+// channel is a network of 1; nothing owned is 0.
+export function largestNetwork(channelKeys) {
+  if (!channelKeys.length) return 0;
+  const ends = channelKeys.map(k => k.split('>'));
+  const seen = new Set();
+  let best = 0;
+  for (let i = 0; i < channelKeys.length; i++) {
+    if (seen.has(i)) continue;
+    // Flood fill from channel i across any channel sharing a node.
+    const stack = [i]; let size = 0;
+    while (stack.length) {
+      const j = stack.pop();
+      if (seen.has(j)) continue;
+      seen.add(j); size++;
+      const [a, b] = ends[j];
+      for (let m = 0; m < channelKeys.length; m++) {
+        if (seen.has(m)) continue;
+        const [c, d] = ends[m];
+        if (a === c || a === d || b === c || b === d) stack.push(m);
+      }
+    }
+    if (size > best) best = size;
+  }
+  return best;
+}
+
+// Who owns a channel: the player with the most dredge markers on it. A tie goes
+// to whoever dredged most recently — so a single counter-dredge contests a
+// channel but does not flip one someone has invested in twice. Returns null if
+// nobody has dredged it. Kept as a function so the rule lives in exactly one
+// place; execute() calls it after every dredge to refresh the cached rights[k].
+export function channelOwner(g, k) {
+  const m = g.markers[k];
+  if (!m) return null;
+  let best = null, bestN = 0;
+  for (const [idx, n] of Object.entries(m)) {
+    if (n > bestN) { bestN = n; best = +idx; }
+    else if (n === bestN && bestN > 0 && g.mostRecent[k] === +idx) { best = +idx; }
+  }
+  return bestN > 0 ? best : null;
+}
 
 export function seatOrder(g) {
   return g.players.map((_, i) => (g.firstPlayer + i) % g.players.length);
@@ -295,12 +358,26 @@ export function execute(g, pi, action, choice, claimed) {
       p.coins -= TUNING.dredgeCoins;
       const before = g.depth[k];
       g.depth[k] = Math.min(TUNING.maxDepth, g.depth[k] + TUNING.dredgeAmount);
+
+      // Leave a marker and recompute ownership from marker counts. Ownership is
+      // no longer "whoever dredged last" — it is whoever has the most presence on
+      // the channel, so investment sticks. claimed_ is true only when this dredge
+      // actually changed the owner, which is what the demo commentary points at.
       let claim = '';
       let claimed_ = false;
-      if (TUNING.rightsEnabled && g.rights[k] !== pi) {
-        g.rights[k] = pi; claim = ' — claims rights'; claimed_ = true;
+      if (TUNING.rightsEnabled) {
+        g.markers[k][pi] = (g.markers[k][pi] ?? 0) + 1;
+        g.mostRecent[k] = pi;
+        const owner = channelOwner(g, k);
+        if (owner !== g.rights[k]) {
+          claim = owner === pi ? ' — takes the channel' : '';
+          claimed_ = owner === pi;
+          g.rights[k] = owner;
+        }
       }
-      g.log.push(`${p.name} dredges ${k} to depth ${g.depth[k]}, pays ${TUNING.dredgeCoins} gold${claim}`);
+      const mine = g.markers[k][pi] ?? 0;
+      g.log.push(`${p.name} dredges ${k} to depth ${g.depth[k]}, pays ${TUNING.dredgeCoins} gold`
+        + `${claim}${mine > 1 ? ` (${mine} markers)` : ''}`);
       emit(g, 'dredge', { pi, channel: k, from: before, to: g.depth[k], claimed: claimed_ });
       break;
     }
@@ -385,13 +462,25 @@ export function execute(g, pi, action, choice, claimed) {
     }
     case 'survey': {
       p.coins += TUNING.surveyCoins;
-      const drawn = Array.from({ length: TUNING.surveyDraw }, () => g.deck.pop()).filter(Boolean);
+      // choice.drawn is passed by the human path, which drew the cards first (via
+      // surveyDrawnFor) so the player could choose one; bots draw inline and
+      // auto-keep the best. Either way the kept card is named in the log — the
+      // "keep 1 of 3" decision was happening silently before, and +3 gold was the
+      // only visible sign the action did anything.
+      const drawn = choice?.drawn
+        ?? Array.from({ length: TUNING.surveyDraw }, () => g.deck.pop()).filter(Boolean);
+      let keptName = '';
       if (drawn.length) {
         const keep = choice?.contract ?? drawn.slice().sort((a, b) => b.vp - a.vp)[0];
-        if (p.contracts.length < TUNING.handLimit) p.contracts.push(keep);
+        if (p.contracts.length < TUNING.handLimit) {
+          p.contracts.push(keep);
+          keptName = ` — keeps ${Math.round(keep.vp * TUNING.contractScale)}pt ${keep.kind}`;
+        } else {
+          keptName = ' — but the hand is full, so the draw is discarded';
+        }
         for (const c of drawn) if (c !== keep) g.deck.unshift(c);
       }
-      g.log.push(`${p.name} surveys and takes ${TUNING.surveyCoins} gold`);
+      g.log.push(`${p.name} surveys, takes ${TUNING.surveyCoins} gold${keptName}`);
       emit(g, 'survey', { pi, coins: TUNING.surveyCoins, drew: drawn.length });
       break;
     }
@@ -416,7 +505,9 @@ export function siltPhase(g) {
       const before = g.depth[k];
       g.depth[k] = Math.max(0, g.depth[k] - TUNING.siltPerShip); n++;
       dropped.push({ channel: k, from: before, to: g.depth[k] });
-      if (g.depth[k] === 0) { g.rights[k] = null; died.push(k); }   // nobody owns a dead channel
+      // A dead channel is gone: nobody owns it, and the markers go with it, so
+      // re-dredging it later is a fresh contest rather than restoring old claims.
+      if (g.depth[k] === 0) { g.rights[k] = null; g.markers[k] = {}; g.mostRecent[k] = null; died.push(k); }
     }
   }
   g.log.push(`Silt settles — ${n} ${n === 1 ? "channel loses" : "channels lose"} depth`);
@@ -520,8 +611,16 @@ export function score(g) {
       ? Object.keys(g.rights).filter(k =>
         g.rights[k] === p.idx && g.depth[k] >= TUNING.rightsDepthMin).length : 0;
     const held = heldCount * TUNING.rightsVP;
+    // Network bonus, Hansa-style: reward a CONNECTED web of owned channels over
+    // the same number scattered across the delta. Worth +vpNetworkChannel for
+    // every channel in your largest connected run, on top of the flat per-channel
+    // held VP — so controlling a corridor beats owning three unrelated tolls.
+    const ownedChannels = Object.keys(g.rights).filter(k =>
+      g.rights[k] === p.idx && g.depth[k] >= TUNING.rightsDepthMin);
+    const netSize = largestNetwork(ownedChannels);
+    const netBonus = netSize * TUNING.vpNetworkChannel;
     return { name: p.name, contracts, mouth, network, coin, silt, held, heldCount,
-             live, stations: p.stations.length,
-             total: contracts + mouth + network + coin + silt + held };
+             netSize, netBonus, live, stations: p.stations.length,
+             total: contracts + mouth + network + coin + silt + held + netBonus };
   });
 }

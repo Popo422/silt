@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
   newGame, execute, siltPhase, regrowPhase, upkeepPhase, score, seatOrder,
   buildTargets, dredgeTargets, shipRoutes, shipOptions, canReachMouth, startValue,
-  buildCost, TUNING, ACTIONS,
+  buildCost, TUNING, ACTIONS, channelOwner, largestNetwork,
 } from './engine.js';
 import { CHANNELS, MOUTHS, NODES, chKey, buildIndex, NODE_BY_ID } from './graph.js';
 import { THEME, PLAIN } from './theme.js';
@@ -983,5 +983,83 @@ describe('the rulebook cannot drift from the engine', () => {
     const stray = [...prose.matchAll(/<b>(\d+)<\/b>/g)].map(m => m[1])
       .filter(n => !['0', '1', '2'].includes(n));
     expect(stray, `hardcoded values in rulebook prose: ${stray.join(', ')}`).toEqual([]);
+  });
+});
+
+// Dredging-rights are Hansa-style now: ownership follows marker count (one per
+// Hukay), not who dredged last. This is the rule that makes a claim stick — a
+// single counter-dredge contests a channel but does not steal one you invested
+// in twice.
+describe('channel ownership by marker count', () => {
+  // A channel low enough to dredge, and make both players able to reach it by
+  // pretending it is a legal target (channelOwner reads markers directly, so the
+  // marker bookkeeping is what matters, not station adjacency).
+  const setup = () => {
+    const g = newGame(2, 7);
+    const k = Object.keys(g.depth)[0];
+    g.depth[k] = 1;
+    return { g, k };
+  };
+  const dredge = (g, k, pi) => {
+    g.markers[k][pi] = (g.markers[k][pi] ?? 0) + 1;
+    g.mostRecent[k] = pi;
+    g.rights[k] = channelOwner(g, k);
+  };
+
+  it('gives the channel to whoever has the most markers', () => {
+    const { g, k } = setup();
+    dredge(g, k, 0);
+    dredge(g, k, 0);
+    dredge(g, k, 1);   // player 1 dredged LAST but has fewer markers
+    expect(channelOwner(g, k)).toBe(0);
+  });
+
+  it('breaks a marker tie in favour of the most recent dredger', () => {
+    const { g, k } = setup();
+    dredge(g, k, 0);
+    dredge(g, k, 1);   // 1-1, player 1 dredged last
+    expect(channelOwner(g, k)).toBe(1);
+    dredge(g, k, 0);   // 2-1, player 0 pulls ahead
+    expect(channelOwner(g, k)).toBe(0);
+  });
+
+  it('is unowned until someone dredges it', () => {
+    const { g, k } = setup();
+    expect(channelOwner(g, k)).toBe(null);
+  });
+
+  it('a real dredge through execute leaves a marker and claims the channel', () => {
+    const g = newGame(2, 7);
+    // Put player 0 next to a dredgeable channel.
+    const p = g.players[0];
+    const home = p.stations[0];
+    const nbr = g.out[home][0] ?? g.inn[home][0];
+    const k = chKey(home, nbr) in g.depth ? chKey(home, nbr) : chKey(nbr, home);
+    g.depth[k] = 1;
+    p.coins = 10;
+    execute(g, 0, 'dredge', { channel: k }, new Set());
+    expect(g.markers[k][0]).toBe(1);
+    expect(g.rights[k]).toBe(0);
+  });
+});
+
+// Network scoring rewards a CONNECTED web of owned channels over scattered ones.
+describe('largest connected network', () => {
+  it('counts a single channel as a network of one', () => {
+    expect(largestNetwork(['A>B'])).toBe(1);
+  });
+
+  it('is zero when nothing is owned', () => {
+    expect(largestNetwork([])).toBe(0);
+  });
+
+  it('joins channels that share a node', () => {
+    // A>B, B>C, C>D form one chain of 3; X>Y is separate.
+    expect(largestNetwork(['A>B', 'B>C', 'C>D', 'X>Y'])).toBe(3);
+  });
+
+  it('takes the LARGEST component, not the total', () => {
+    // Two pairs: {A>B,B>C} and {X>Y,Y>Z} — largest is 2, not 4.
+    expect(largestNetwork(['A>B', 'B>C', 'X>Y', 'Y>Z'])).toBe(2);
   });
 });
