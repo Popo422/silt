@@ -606,6 +606,39 @@ test.describe('shipping lets you choose the route', () => {
       .toBeGreaterThan(1);
   });
 
+  // The first version of this suite passed while the interaction was confusing:
+  // it checked the bays were CLICK TARGETS but never that a player could SEE they
+  // were. The bays had no cue, so you had to guess the route's endpoint was the
+  // thing to click — the exact "which node do I click?" confusion this is meant
+  // to prevent.
+  test('the destination bays are visibly marked, not just clickable', async ({ page }) => {
+    await armShip(page);
+    await page.locator('circle[data-hit-kind="ship"]').first().click({ force: true });
+    // A beacon ring on each reachable bay, the same cue build targets get.
+    const cued = page.locator('g:has(circle[data-hit-kind="shipTo"]) .beacon');
+    const targets = page.locator('circle[data-hit-kind="shipTo"]');
+    expect(await cued.count(), 'every destination bay needs a visible cue')
+      .toBe(await targets.count());
+  });
+
+  test('the route hint does not swallow the click', async ({ page }) => {
+    await armShip(page);
+    await page.locator('circle[data-hit-kind="ship"]').first().click({ force: true });
+    // Routes are a hint. Interactive, they intercepted clicks and resolved
+    // nothing — the whole thing read as broken.
+    const pe = await page.locator('.shipRoute').first()
+      .evaluate(e => getComputedStyle(e).pointerEvents);
+    expect(pe, 'ship routes must not capture pointer events').toBe('none');
+  });
+
+  test('clicking a destination bay actually ships there', async ({ page }) => {
+    await armShip(page);
+    await page.locator('circle[data-hit-kind="ship"]').first().click({ force: true });
+    await page.locator('circle[data-hit-kind="shipTo"]').first().click({ force: true });
+    // Aiming is over — the ship resolved rather than sitting stuck.
+    await expect(page.locator('#hint')).toBeHidden();
+  });
+
   test('the routes shown lead only to bays the origin can actually reach', async ({ page }) => {
     await armShip(page);
     await page.locator('circle[data-hit-kind="ship"]').first().click({ force: true });

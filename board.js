@@ -236,7 +236,10 @@ export function drawBoard(ctx) {
         const pd = channelPath(A, B, k);
         svg.appendChild(el('path', { d: pd, fill: 'none',
           stroke: 'var(--gold)', 'stroke-width': 0.7, opacity: .8,
-          'stroke-linecap': 'round', 'stroke-dasharray': '1.1 0.9', class: 'shipRoute' }));
+          'stroke-linecap': 'round', 'stroke-dasharray': '1.1 0.9', class: 'shipRoute',
+          // The route is a hint, not a button. Left interactive it swallowed the
+          // click without resolving anything, so the whole thing felt broken.
+          'pointer-events': 'none' }));
       }
     }
   }
@@ -314,7 +317,11 @@ export function drawBoard(ctx) {
     // This used to be the tutorial case only, so during ordinary play the legal
     // targets got a slightly warmer fill and nothing else — no motion at all.
     // "Click a highlighted node" is a poor instruction when nothing is moving.
-    const isTarget = btargets.has(n.id) || sfrom.has(n.id);
+    // destMouths included so the destination bays PULSE in stage-two shipping.
+    // Without it the routes lit up but the thing you actually click — the bay at
+    // the end — had no cue at all, so you had to guess the endpoint was the
+    // target. The pulse plus the beacon ring is what says "click here".
+    const isTarget = btargets.has(n.id) || sfrom.has(n.id) || destMouths.has(n.id);
     const highlighted = isTarget
       || (hl?.kind === 'node' && (hl.ids === 'own'
         ? g.players[HUMAN].stations.includes(n.id)
