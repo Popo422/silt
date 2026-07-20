@@ -178,6 +178,7 @@ function buildMenu() {
   wireBook();
   wireBoard();
   wireTabs();
+  wireHeaderMenu();
   createTips();
   // Pan/zoom knows nothing about the game; the two places it needs game state
   // are injected as predicates so the dependency points one way only.
@@ -733,6 +734,39 @@ function wireTabs() {
   setTab('play');
 }
 
+// The mobile header hamburger. Reuses the desktop buttons' handlers so there is
+// one source of truth for what Speed/Rules/Menu do — the menu items just click them.
+function wireHeaderMenu() {
+  const menu = $('hdrMenu'), btn = $('hdrMenuBtn');
+  // The header is a stacking context (sticky + z-index) capped below the action
+  // bar, so a fixed dropdown inside it still paints under #bar. Move the menu to
+  // <body> so it escapes that context entirely — same trick as the survey sheet.
+  document.body.appendChild(menu);
+  const setOpen = (open) => {
+    if (open) {
+      // Anchor the fixed dropdown just under the hamburger (its spot varies with
+      // the header's position in the stacked mobile layout).
+      const r = btn.getBoundingClientRect();
+      menu.style.setProperty('--hdrMenuTop', `${Math.round(r.bottom + 4)}px`);
+    }
+    menu.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+  };
+  btn.addEventListener('click', () => setOpen(menu.hidden));   // toggle
+  const acts = { speed: 'btnSpeed', rules: 'btnRules', quit: 'btnQuit' };
+  for (const item of menu.querySelectorAll('button')) {
+    item.addEventListener('click', () => { setOpen(false); $(acts[item.dataset.act]).click(); });
+  }
+  // Close on any click that is neither the button nor inside the menu. Not relying
+  // on stopPropagation from the button handler — the document listener simply skips
+  // clicks whose target is within the button, which is what re-toggles it instead.
+  document.addEventListener('click', (e) => {
+    if (menu.hidden) return;
+    if (btn.contains(e.target) || menu.contains(e.target)) return;
+    setOpen(false);
+  });
+}
+
 function wireBoard() {
   $('svg').addEventListener('click', (e) => {
     // A pan ends in a click on whatever the cursor landed on. Without this, a
@@ -906,6 +940,8 @@ function applySpeed() {
   if (speed === 'off') fx.clear();
   const b = $('btnSpeed');
   if (b) { b.textContent = SPEED_LABEL[speed]; b.classList.toggle('muted', speed === 'off'); }
+  const hv = $('hdrSpeedVal');
+  if (hv) hv.textContent = SPEED_LABEL[speed];   // mirror into the hamburger menu
 }
 
 // Hoisted, not a const arrow: flush() and resetGame() both call this from above

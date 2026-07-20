@@ -298,20 +298,21 @@ export function renderAimHint({ el, pendingAction, T, stage, confirm, esc }) {
   // Confirm to spend, Pick another to re-aim (undo the click), Skip to decline. The
   // player can always change their mind here — nothing has been spent yet.
   if (confirm) {
+    // A compact bar, not a stack of full-width buttons: the cost on one line, then
+    // a single row — Confirm takes the space, re-aim and cancel are small icon
+    // buttons beside it. Tapping another lit target re-aims too (see wireBoard).
     hint.innerHTML = `
       <span class="aimTxt confirmTxt"><b>${esc(confirm.title)}</b> — ${esc(confirm.detail)}</span>
-      <button id="confirmYes" class="confirmYes"
-              data-tip="Do it. This spends the cost shown and resolves the action.">
-        Confirm
-      </button>
-      <button id="confirmNo" class="skipAim"
-              data-tip="Change your mind — nothing has been spent. Pick a different target.">
-        Pick another
-      </button>
-      <button id="skipAim" class="skipAim"
-              data-tip="Decline this action entirely. The slot is spent, but no target is used.">
-        Skip <kbd>Esc</kbd>
-      </button>`;
+      <div class="confirmRow">
+        <button id="confirmYes" class="confirmYes"
+                data-tip="Do it. This spends the cost shown and resolves the action.">
+          Confirm
+        </button>
+        <button id="confirmNo" class="confirmMini"
+                data-tip-title="Pick another" data-tip="Change your mind — nothing has been spent. Pick a different target.">↻</button>
+        <button id="skipAim" class="confirmMini"
+                data-tip-title="Skip" data-tip="Decline this action entirely. The slot is spent, but no target is used.">✕</button>
+      </div>`;
     return;
   }
 
