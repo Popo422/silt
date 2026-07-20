@@ -44,12 +44,20 @@
     opacity:.5;filter:brightness(.56) saturate(1.1)}
   /* Two columns so the setup stops being a tall stack of identical rows. Falls
      back to one column when there is not room for two. */
-  .setupGrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+  /* stretch, not start: the left column (Edition + Players + Length) is taller
+     than the single Opponents box, and align-items:start let that box hug the top
+     and float short — reading as "the left side pushes down, the right lifts up".
+     Stretching makes both columns share a height so they top- AND bottom-align. */
+  .setupGrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:stretch}
   @media (max-width:760px){.setupGrid{grid-template-columns:1fr;gap:0}}
-  .setupCol{min-width:0}
-  .opponentsBox{background:rgba(18,14,9,.28);border:1px solid rgba(255,238,205,.1);
+  .setupCol{min-width:0;display:flex;flex-direction:column}
+  /* Fill the column height and let the bot rows breathe into the extra space. */
+  .opponentsBox{flex:1;display:flex;flex-direction:column;
+    background:rgba(18,14,9,.28);border:1px solid rgba(255,238,205,.1);
     border-radius:9px;padding:13px 14px;box-shadow:inset 0 2px 6px rgba(0,0,0,.25)}
-  .fieldNote{margin:9px 0 0;font-size:11px;color:var(--dim2);line-height:1.45}
+  /* Push the note to the bottom of the (now taller) box so the extra height falls
+     as breathing room above it, not an awkward gap below. */
+  .fieldNote{margin:auto 0 0;padding-top:9px;font-size:11px;color:var(--dim2);line-height:1.45}
   .brand{display:flex;align-items:center;gap:16px;margin-bottom:6px}
   .brand svg{width:46px;height:46px;color:var(--gold);flex:none}
   .brand h1{margin:0;font-size:38px;letter-spacing:.28em;font-weight:600}
