@@ -102,4 +102,42 @@ if (process.argv[1]?.endsWith('sweep.mjs')) {
     'contracts x2':           { contractScale: 2 },
     'contracts x2 + mouth up': { contractScale: 2, mouthVP: [12, 6, 2] },
   });
+
+  // D. Reward interaction: the field now includes smart (the real planner) and
+  // turtle (the camper that currently wins). Goal: a config where the interactive
+  // lines (dredging/tolls/corridor + the neglected-bay bonus) beat turtle, and the
+  // coin hoard converts to fewer points, WITHOUT scores leaving the 45-60 band or
+  // the win-spread blowing out.
+  const REBAL_FIELD = ['smart', 'turtle', 'balanced', 'steward'];
+  sweep('D. reward interaction (vs turtle camp)', {
+    'baseline':                    {},
+    'tolls up (rightsVP 3)':       { rightsVP: 3 },
+    'tolls+corridor up':           { rightsVP: 3, vpNetworkChannel: 2 },
+    'tolls+corridor+bonus':        { rightsVP: 3, vpNetworkChannel: 2, bayBonusGold: 6 },
+    'coins softer (vpPerCoins 7)': { vpPerCoins: 7 },
+    'full: interact up+coins soft':{ rightsVP: 3, vpNetworkChannel: 2, bayBonusGold: 6, vpPerCoins: 7 },
+  }, REBAL_FIELD);
+
+  // E. Contracts as an additive bonus, not the game. Interaction rebalance is now
+  // the baseline (rightsVP/network/bonus/coins already applied in TUNING), so this
+  // sweeps ONLY contractScale down from 2. Goal: contract share falls from ~45%
+  // toward ~30%, the top contract stops being ~30 pts (2/3 of a win), and scores
+  // settle back toward ~45-52 — without contracts becoming so weak nobody chases.
+  sweep('E. contracts additive not swingy', {
+    'contractScale 2.0 (now)': { contractScale: 2 },
+    'contractScale 1.5':       { contractScale: 1.5 },
+    'contractScale 1.25':      { contractScale: 1.25 },
+    'contractScale 1.0':       { contractScale: 1 },
+  }, REBAL_FIELD);
+
+  // F. Tolls bite harder to punish turtle's high-volume unowned shipping. Includes
+  // tollkeeper in the field — the bot that actually claims channels — because tolls
+  // only bite if SOMEONE owns the routes turtle ships through. Watch turtle's win%.
+  const TOLL_FIELD = ['smart', 'turtle', 'tollkeeper', 'balanced'];
+  sweep('F. tolls bite (vs turtle volume)', {
+    'tollPerShip 2 (now)': { tollPerShip: 2 },
+    'tollPerShip 3':       { tollPerShip: 3 },
+    'tollPerShip 4':       { tollPerShip: 4 },
+    'tollPerShip 5':       { tollPerShip: 5 },
+  }, TOLL_FIELD);
 }

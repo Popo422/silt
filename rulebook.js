@@ -32,7 +32,7 @@ export function pages(T) {
     },
     {
       title: anod ? 'Ang Ikot' : 'The Round',
-      sub: 'six phases, in order',
+      sub: 'the phases, in order',
       body: `
         <ol>
           <li><b>${anod ? 'Magplano' : 'Program'}</b> — choose <b>2</b> actions, in
@@ -44,6 +44,10 @@ export function pages(T) {
           <li><b>${anod ? 'Anod' : 'Silt'}</b> — every channel that carried cargo this
             round loses <b>${TUNING.siltPerShip}</b> depth. Maximum once per channel,
             no matter how many players used it.</li>
+          <li><b>${anod ? 'Bayad-Look' : 'Bay bonus'}</b> — the ${X.mouth.name.toLowerCase()}
+            that received the <b>least</b> cargo this round carries a
+            <b>${TUNING.bayBonusGold}${money}</b> premium into the next; the first to
+            ship there claims it.</li>
           <li><b>${anod ? 'Gugol' : 'Upkeep'}</b> — pay <b>${TUNING.upkeepPerStation}${money}</b>
             for each ${X.station.name.toLowerCase()} beyond your first
             <b>${TUNING.freeStations}</b>. Cannot pay? You abandon one.</li>
@@ -186,6 +190,12 @@ export function pages(T) {
           <li><b>Do not over-dredge.</b> Every action spent repairing is one not
             spent earning; the player who fixes everything usually loses.</li>
           <li><b>Long routes pay more and die faster.</b> That tension is the game.</li>
+          <li><b>Chase the bay bonus.</b> When everyone floods one
+            ${X.mouth.name.toLowerCase()}, the quietest one pays a premium next round —
+            and its route has usually silted from neglect. Being the one who dredges
+            in to claim it is often the best gold on the board.</li>
+          <li><b>Contracts are a bonus, not the plan.</b> They reward trading well;
+            they no longer win the game on their own. Play the river first.</li>
           <li><b>Check what a contract needs before you ship.</b> Goods delivered to
             the wrong ${X.mouth.name.toLowerCase()} still count for majority, but
             not for a contract naming a different one.</li>

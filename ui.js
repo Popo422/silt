@@ -1,6 +1,6 @@
 import { NODE_BY_ID } from './graph.js';
 import {
-  newGame, execute, siltPhase, regrowPhase, upkeepPhase, score, seatOrder,
+  newGame, execute, siltPhase, bayBonusPhase, regrowPhase, upkeepPhase, score, seatOrder,
   buildTargets, dredgeTargets, shipOptions, buildCost, surveyDrawnFor, TUNING,
 } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
@@ -857,6 +857,10 @@ async function endRound() {
   // to happen inside the same repaint as upkeep, so the single most important
   // consequence of the round went by completely unseen.
   siltPhase(g);
+  await flush();
+  // The neglected bay lights up right after the silt sweep, its own beat: the
+  // quietest bay this round now carries a premium into the next.
+  bayBonusPhase(g);
   await flush();
   regrowPhase(g); upkeepPhase(g);
   roundsPlayed++;

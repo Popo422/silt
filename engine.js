@@ -27,22 +27,48 @@ export const TUNING = {
   // Also tried: silt settling between slots, to let a route die before your second
   // action fires. Rejected — ship failures stayed at 0.00/game, so it added no
   // tension, just 1.7 more dead channels and -2.6 score.
-  tollPerShip: 2,           // coins paid to a channel's rights-holder when others ship through
+  tollPerShip: 3,           // coins paid to a channel's rights-holder when others ship
+                            // through. Raised from 2 so a claimed channel pays back its
+                            // dredging. Not higher: holding a busy corridor is structurally
+                            // hard (shipping silts it below scoring depth faster than you
+                            // can maintain it), so tolls are a fair side income, not a
+                            // dominant line — which is on-theme for a river that dies as
+                            // it is used.
   rightsEnabled: true,      // dredging claims a channel; others pay you to use it
-  rightsVP: 2,              // VP per channel you still hold at game end
-  vpNetworkChannel: 1,      // extra VP per channel in your largest CONNECTED run
+  // Interaction rebalance (sim-swept): the toll/corridor category was scoring ~1
+  // of ~50 for everyone, so nobody dredged or contested — and a camp-by-a-bay
+  // turtle that skips all of it won outright (36% vs a 28% field). Raising these
+  // and softening the coin conversion pulled turtle back to 32% and tightened the
+  // win-spread from 23% to 17%, without scores leaving the 45-60 band.
+  rightsVP: 3,              // VP per channel you still hold at game end (was 2)
+  vpNetworkChannel: 2,      // extra VP per channel in your largest CONNECTED run (was 1)
   // Minimum depth for a claimed channel to score. Was hardcoded as `>= 2` down
   // in score(), while the rulebook printed "depth 2+" from its own literal — two
   // copies of one rule, either of which could be changed without the other.
   rightsDepthMin: 2,
-  contractScale: 2,         // contracts sat at ~22% of score; target is ~45%
+  // Contracts are an additive bonus, not the game. At scale 2 a single delta
+  // contract was ~30 pts — two-thirds of a winning score — so the whole game
+  // collapsed into "hit your big card" solitaire, and the interactive delta was
+  // just the means. At scale 1 the top contract is 15, contracts are ~29% of
+  // score, and the winner-loser spread tightens from ~38 to ~26: contracts reward
+  // playing the river well, they no longer decide the game on one draw.
+  contractScale: 1,
   handLimit: 4,
-  vpPerCoins: 5,
+  vpPerCoins: 7,            // was 5 — a hoarded-coin turtle converted gold to VP too
+                           // cheaply; softening this took the air out of passive play
+
   mouthVP: [12, 6, 2],      // raise the contested-delivery stakes
   vpPerStation: 0,          // raw disc count shouldn't score; only working routes do
   vpLiveStation: 2,         // a station that still reaches the sea is the reward
   liveDepthMin: 1,        // at 2, ~0-21% of stations qualified; the bonus was dead weight
   siltedPenaltyVP: 1,       // NEW: -1vp per SILTED channel adjacent to your stations
+  // Neglected-bay premium. Each round, the bay that received the LEAST cargo
+  // carries a gold bonus into the next round; the first player to ship there
+  // claims it, then it is spent. This is the interaction engine: the crowd floods
+  // one bay, its rivals' best move is to break off and supply the ignored one —
+  // whose route has usually silted from neglect, so grabbing the premium means
+  // dredging your way there. Turns "fix the river" from a chore into a race.
+  bayBonusGold: 6,
 };
 
 export const ACTIONS = ['dredge', 'build', 'ship', 'survey'];
@@ -161,6 +187,11 @@ export function newGame(playerCount = 3, seed = 12345) {
     round: 1, phase: 'program', slot: 0, firstPlayer, draftOrder,
     depth, rights, markers, mostRecent, cubes, players, deck, out, inn,
     log: [], events: [], shippedThisRound: new Set(), seed, rand,
+    // bayThisRound counts cargo delivered to each bay this round, to find the most
+    // neglected one at round end. bayBonus is the premium waiting on a bay from
+    // last round's neglect: { mouth, amount }, or null if none / already claimed.
+    bayThisRound: Object.fromEntries(MOUTHS.map(m => [m, 0])),
+    bayBonus: null,
   };
 }
 
@@ -268,6 +299,42 @@ export function shipOptions(g, p) {
     }
   }
   return opts;
+}
+
+// How attainable is contract `c` for player p, right now? Higher is better. A
+// contract is only worth its points if p can actually deliver what it asks: the
+// right goods, to the bay it names, along a route that still reaches the sea.
+// Used to keep the most fulfillable survey card instead of the highest-VP one —
+// a big contract you can never complete is worth zero, not its face value.
+//
+// Pure: reads stations, goods and depth; mutates nothing. Exported so the bot
+// auto-keep and a future human hint can share one definition.
+export function contractFit(g, p, c) {
+  // Which goods can p bring to the sea at all? A station's good counts only if
+  // that station still has a navigable route to a bay.
+  const reachableGoods = new Set();
+  for (const s of p.stations) {
+    if (canReachMouth(g, s, TUNING.liveDepthMin)) reachableGoods.add(NODE_BY_ID[s].good);
+  }
+  // Already-pooled goods at the relevant bay(s) count as progress in hand.
+  const bays = c.mouth ? [c.mouth] : MOUTHS;
+  let poolBest = 0;
+  for (const m of bays) {
+    const d = p.pool[m];
+    const tot = GOODS.reduce((s, gd) => s + d[gd], 0);
+    poolBest = Math.max(poolBest, Math.min(tot, c.need));
+  }
+  // Kinds requirement: can p even source `types` different goods it can ship?
+  const kindsCoverable = Math.min(c.types, reachableGoods.size);
+  const kindFactor = c.types ? kindsCoverable / c.types : 1;
+  // A contract naming a bay p cannot currently reach is a long shot.
+  const mouthReach = c.mouth
+    ? (p.stations.some(s => canReachMouth(g, s, TUNING.liveDepthMin)) ? 1 : 0.3)
+    : 1;
+  // Blend attainability with the reward. An unattainable big card scores low; an
+  // attainable one scores near its full value.
+  const attain = kindFactor * mouthReach * (0.4 + 0.6 * poolBest / Math.max(1, c.need));
+  return c.vp * (0.25 + 0.75 * attain);
 }
 
 // --- Resolution -----------------------------------------------------------
@@ -427,7 +494,16 @@ export function execute(g, pi, action, choice, claimed) {
       g.cubes[o.from] -= n;
       p.delivered[o.mouth][o.good] += n;
       p.pool[o.mouth][o.good] += n;
-      const pay = n * TUNING.shipPerCube + o.path.length * TUNING.shipPerChannel;
+      if (g.bayThisRound) g.bayThisRound[o.mouth] += n;
+      let pay = n * TUNING.shipPerCube + o.path.length * TUNING.shipPerChannel;
+      // Claim the neglected-bay premium if it is sitting on this bay. First to
+      // ship here takes it; it is then spent for the round.
+      let bonus = 0;
+      if (g.bayBonus && g.bayBonus.mouth === o.mouth && g.bayBonus.amount > 0) {
+        bonus = g.bayBonus.amount;
+        pay += bonus;
+        g.bayBonus = null;
+      }
       p.coins += pay;
       o.path.forEach(k => g.shippedThisRound.add(k));
 
@@ -447,10 +523,11 @@ export function execute(g, pi, action, choice, claimed) {
         }
       }
       g.log.push(`${p.name} ships ${n} ${o.good} to ${o.mouth}, earns ${pay} gold`
+        + `${bonus ? ` (incl. ${bonus} neglected-bay bonus)` : ''}`
         + `${tolls ? `, pays ${tolls} in tolls` : ''}`);
       emit(g, 'ship', {
         pi, path: o.path, from: o.from, mouth: o.mouth, good: o.good,
-        cubes: n, pay, tolls: paid,
+        cubes: n, pay, tolls: paid, bonus,
       });
       const doneBefore = p.done.length;
       tryContracts(g, p);
@@ -471,7 +548,10 @@ export function execute(g, pi, action, choice, claimed) {
         ?? Array.from({ length: TUNING.surveyDraw }, () => g.deck.pop()).filter(Boolean);
       let keptName = '';
       if (drawn.length) {
-        const keep = choice?.contract ?? drawn.slice().sort((a, b) => b.vp - a.vp)[0];
+        // Bots keep the card they can actually fulfil given their board, not the
+        // biggest number — a 30-point contract you can never complete is worthless.
+        const keep = choice?.contract
+          ?? drawn.slice().sort((a, b) => contractFit(g, p, b) - contractFit(g, p, a))[0];
         if (p.contracts.length < TUNING.handLimit) {
           p.contracts.push(keep);
           keptName = ` — keeps ${Math.round(keep.vp * TUNING.contractScale)}pt ${keep.kind}`;
@@ -515,6 +595,22 @@ export function siltPhase(g) {
   if (gone) g.log.push(`  ${gone} ${gone === 1 ? "channel is" : "channels are"} now blocked for good`);
   emit(g, 'silt', { dropped, died, total: gone });
   g.shippedThisRound = new Set();
+}
+
+// The neglected-bay premium. After a round resolves, the bay that received the
+// least cargo carries a gold bonus into the next round. On a tie (including the
+// common all-zero opening), the tie is broken deterministically by MOUTHS order
+// so replays match. Any unclaimed bonus from last round is overwritten — the
+// premium is a fresh, single-round pull toward wherever the crowd is NOT going.
+export function bayBonusPhase(g) {
+  const counts = g.bayThisRound ?? Object.fromEntries(MOUTHS.map(m => [m, 0]));
+  let least = MOUTHS[0];
+  for (const m of MOUTHS) if (counts[m] < counts[least]) least = m;
+  g.bayBonus = { mouth: least, amount: TUNING.bayBonusGold };
+  g.bayThisRound = Object.fromEntries(MOUTHS.map(m => [m, 0]));
+  g.log.push(`${least} was the quietest bay — it carries a ${TUNING.bayBonusGold} gold `
+    + `bonus into next round for the first to ship there`);
+  emit(g, 'bayBonus', { mouth: least, amount: TUNING.bayBonusGold, counts });
 }
 
 // The delta keeps producing, slowly. Refills the emptiest non-mouth nodes so the

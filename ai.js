@@ -1,7 +1,7 @@
 // SILT — bot strategies. Each is a distinct archetype so sims expose
 // whether the design punishes/rewards what it should.
-import { TUNING, buildCost, buildTargets, dredgeTargets, shipOptions, canReachMouth } from './engine.js';
-import { chKey, NODE_BY_ID } from './graph.js';
+import { TUNING, buildCost, buildTargets, dredgeTargets, shipOptions, canReachMouth, contractFit } from './engine.js';
+import { chKey, NODE_BY_ID, GOODS } from './graph.js';
 
 // Pick the action pair for the round, then per-slot choices are made live.
 export const STRATEGIES = {
@@ -86,6 +86,44 @@ export const STRATEGIES = {
     while (prog.length < 2) prog.push('survey');
     return prog.slice(0, 2);
   },
+
+  // Smart: the real opponent. Not a fixed archetype — it reads the board each
+  // round and does the highest-value thing. Ships toward a contract it can finish
+  // or toward the neglected-bay bonus; dredges a lifeline that is one trip from
+  // dying; expands early while it is cheap; surveys to cycle a dead hand. This is
+  // the bot that makes the game a contest rather than a race of solitaires.
+  smart(g, p) {
+    const opts = shipOptions(g, p);
+    // A lifeline is a fragile channel on a route one of my stations needs to reach
+    // the sea — losing it strands the station. Only depth-1 ones are urgent.
+    const dying = myFragileChannels(g, p).filter(k => g.depth[k] === 1);
+    const canBuild = p.coins >= buildCost(p) && buildTargets(g, p).length;
+    // A hand is "dead" when nothing in it is meaningfully attainable — time to
+    // survey for something I can actually deliver. Threshold is a small fraction
+    // of a contract's face value, so a genuinely stuck card triggers a refresh.
+    const hasLiveContract = p.contracts.some(c => contractFit(g, p, c) > c.vp * 0.4);
+    const roomToDraw = p.contracts.length < TUNING.handLimit;
+
+    const prog = [];
+    // Grab land early — cost escalates, and more goods means more contracts reachable.
+    if (canBuild && p.stations.length < 4 && g.round <= 5) prog.push('build');
+    // Shipping is almost always worth it; chooseTarget picks the contract/bonus route.
+    if (opts.length) prog.push('ship');
+    // Protect a route about to die before it costs me a stranded station.
+    if (dying.length && prog.length < 2) prog.push('dredge');
+    // Cycle a hand I cannot deliver, rather than shipping into contracts I will
+    // never complete.
+    if (!hasLiveContract && roomToDraw && prog.length < 2) prog.push('survey');
+
+    while (prog.length < 2) {
+      if (opts.length > prog.filter(a => a === 'ship').length) prog.push('ship');
+      else if (canBuild) prog.push('build');
+      else if (dredgeTargets(g).length && p.coins >= TUNING.dredgeCoins) prog.push('dredge');
+      else if (roomToDraw) prog.push('survey');
+      else prog.push('ship');
+    }
+    return prog.slice(0, 2);
+  },
 };
 
 // Channels worth owning: damaged (so dredging is legal), not already ours, and
@@ -117,19 +155,59 @@ function myFragileChannels(g, p) {
   return [...set];
 }
 
+// How much would shipping `good` to `mouth` advance one of p's contracts? Returns
+// a rough value: high when it completes or nearly completes a real contract at the
+// bay that contract names, zero when it helps no contract. This is what turns a
+// bot from "ship the biggest payout" into "ship what a contract actually needs".
+function contractGain(g, p, mouth, good, cubes) {
+  let best = 0;
+  for (const c of p.contracts) {
+    // A named-mouth contract only progresses at its own bay; an any-mouth one
+    // (c.mouth null) progresses anywhere, but must gather all goods at ONE bay.
+    if (c.mouth && c.mouth !== mouth) continue;
+    const pool = p.pool[mouth];
+    const have = GOODS.reduce((s, gd) => s + pool[gd], 0);
+    const kinds = GOODS.filter(gd => pool[gd] > 0).length;
+    if (c.types === 1) {
+      // Wants `need` of a single kind. Progress only if THIS good is the one being
+      // built up toward the threshold.
+      const after = pool[good] + cubes;
+      const wasShort = pool[good] < c.need;
+      if (wasShort) best = Math.max(best, c.vp * Math.min(after, c.need) / c.need);
+    } else {
+      // Wants `need` cubes across `types` kinds. A new kind is worth more than a
+      // duplicate; completing the contract is worth its full vp.
+      const addsKind = pool[good] === 0 ? 1 : 0;
+      const totAfter = have + cubes, kindsAfter = kinds + addsKind;
+      const complete = totAfter >= c.need && kindsAfter >= c.types;
+      const progress = (Math.min(totAfter, c.need) / c.need) * 0.6
+        + (Math.min(kindsAfter, c.types) / c.types) * 0.4;
+      best = Math.max(best, complete ? c.vp : c.vp * progress * 0.8);
+    }
+  }
+  return best;
+}
+
+// Score a ship option: what it actually gets you this turn. Contract progress is
+// the biggest lever (it is where the points are), then the neglected-bay premium
+// if this route claims it, then raw gold. Weighted so a route that finishes a
+// contract beats a slightly-richer one that finishes nothing.
+function shipValue(g, p, o) {
+  const gain = contractGain(g, p, o.mouth, o.good, o.cubes);
+  const bonus = (g.bayBonus && g.bayBonus.mouth === o.mouth) ? g.bayBonus.amount : 0;
+  return gain * 3 + bonus + o.payout;
+}
+
 // Given a committed action, choose the concrete target at resolution time.
 export function chooseTarget(g, p, action, strat) {
   switch (action) {
     case 'ship': {
       const opts = shipOptions(g, p);
       if (!opts.length) return null;
-      // Prefer routes that advance a held contract's mouth, then raw payout.
-      const wanted = new Set(p.contracts.map(c => c.mouth).filter(Boolean));
-      opts.sort((a, b) => {
-        const wa = wanted.has(a.mouth) ? 1 : 0, wb = wanted.has(b.mouth) ? 1 : 0;
-        if (wa !== wb) return wb - wa;
-        return b.payout - a.payout;
-      });
+      // Ship what advances a contract or claims the neglected-bay bonus, not just
+      // the biggest raw payout — the old sort only matched a contract's mouth and
+      // ignored whether the goods were the ones it needed.
+      opts.sort((a, b) => shipValue(g, p, b) - shipValue(g, p, a));
       return { option: opts[0] };
     }
     case 'dredge': {

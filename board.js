@@ -555,6 +555,32 @@ export function drawBoard(ctx) {
 
     if (isMouth) drawBayTrack({ grp, n, g, PC, HUMAN, T, nodeLabel });
 
+    // Neglected-bay premium: the quietest bay last round carries a gold bonus for
+    // the first player to ship here. A coin badge over the bay so the incentive to
+    // break from the crowd and supply the ignored route is visible on the board,
+    // not buried in the log.
+    if (isMouth && g.bayBonus && g.bayBonus.mouth === n.id && g.bayBonus.amount > 0) {
+      const bx = n.x + 4.6, by = n.y - 3.6;
+      const badge = el('g', {
+        class: 'bayBonus',
+        'data-tip-title': 'Neglected bay — bonus gold',
+        'data-tip': `This ${T.terms.mouth.name.toLowerCase()} got the least cargo `
+          + `last round, so the first player to ship here this round earns an extra `
+          + `${g.bayBonus.amount} gold on top. Its route has usually silted from `
+          + `neglect — ${T.actions.dredge.name} your way in and the premium is yours.`,
+      });
+      badge.appendChild(el('circle', { cx: bx, cy: by, r: 2.1,
+        fill: 'var(--gold)', stroke: 'rgba(20,16,10,.9)', 'stroke-width': 0.35,
+        class: 'pulse' }));
+      const amt = el('text', {
+        x: bx, y: by + 0.85, 'text-anchor': 'middle', 'font-size': 2.6,
+        'font-weight': 800, fill: 'rgba(30,22,8,1)',
+      });
+      amt.textContent = `+${g.bayBonus.amount}`;
+      badge.appendChild(amt);
+      grp.appendChild(badge);
+    }
+
     const interactive = btargets.has(n.id) || sfrom.has(n.id) || destMouths.has(n.id);
     if (interactive) {
       grp.style.cursor = 'pointer';

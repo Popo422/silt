@@ -1,5 +1,5 @@
 // SILT — headless simulator. Answers the balance questions with numbers.
-import { newGame, execute, siltPhase, regrowPhase, upkeepPhase, score, seatOrder, TUNING } from './engine.js';
+import { newGame, execute, siltPhase, bayBonusPhase, regrowPhase, upkeepPhase, score, seatOrder, TUNING } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
 import { CHANNELS } from './graph.js';
 
@@ -19,13 +19,25 @@ export function playGame(strats, seed) {
       }
     }
     siltPhase(g);
+    bayBonusPhase(g);
     regrowPhase(g);
     upkeepPhase(g);
   }
 
   const silted = Object.values(g.depth).filter(d => d === 0).length;
   const cubesLeft = Object.values(g.cubes).reduce((a, b) => a + b, 0);
-  return { scores: score(g), silted, cubesLeft, g };
+
+  // Per-player play quality, so a smarter bot is a measured claim not a vibe:
+  //   filled  — contracts actually fulfilled (the point of the game)
+  //   waste   — actions that did nothing: a ship blocked by silt, or any fizzle
+  //             (illegal/empty/unaffordable target). g.events accumulates all
+  //             game in a headless run because only the UI ever drains it.
+  const filled = g.players.map(p => p.done.length);
+  const waste = g.players.map(() => 0);
+  for (const e of g.events ?? []) {
+    if (e.type === 'fizzle' || e.type === 'blocked') waste[e.pi] += 1;
+  }
+  return { scores: score(g), silted, cubesLeft, filled, waste, g };
 }
 
 function stats(xs) {
@@ -37,8 +49,11 @@ function stats(xs) {
 export function runSuite(matchups, games = 200) {
   const report = {};
   for (const [label, strats] of Object.entries(matchups)) {
-    const wins = {}, totals = {}, parts = {}, meta = { silted: [], cubes: [], stations: [] };
-    strats.forEach(s => { wins[s] = 0; totals[s] = []; parts[s] = { contracts: [], mouth: [], network: [], coin: [] }; });
+    const wins = {}, totals = {}, parts = {}, filled = {}, waste = {}, meta = { silted: [], cubes: [], stations: [] };
+    strats.forEach(s => {
+      wins[s] = 0; totals[s] = []; filled[s] = []; waste[s] = [];
+      parts[s] = { contracts: [], mouth: [], network: [], coin: [] };
+    });
 
     for (let i = 0; i < games; i++) {
       const r = playGame(strats, 1000 + i * 7);
@@ -46,6 +61,8 @@ export function runSuite(matchups, games = 200) {
       r.scores.forEach((s, idx) => {
         const st = strats[idx];
         totals[st].push(s.total);
+        filled[st].push(r.filled[idx]);
+        waste[st].push(r.waste[idx]);
         if (s.total === best) wins[st] += 1;
         for (const k of ['contracts', 'mouth', 'network', 'coin']) parts[st][k].push(s[k]);
         meta.stations.push(s.stations);
@@ -53,7 +70,7 @@ export function runSuite(matchups, games = 200) {
       meta.silted.push(r.silted);
       meta.cubes.push(r.cubesLeft);
     }
-    report[label] = { wins, totals, parts, meta, games, strats };
+    report[label] = { wins, totals, parts, filled, waste, meta, games, strats };
   }
   return report;
 }
@@ -75,6 +92,12 @@ export function printReport(report) {
         return `${k} ${m.toFixed(1)} (${pct(m, tot)})`;
       };
       console.log(`             ${share('contracts')}  ${share('mouth')}  ${share('network')}  ${share('coin')}`);
+      // Play quality: how many contracts this bot actually fulfils, and how many
+      // of its actions did nothing. A bot that "focuses contracts" should show a
+      // higher fill count and lower waste than one shipping by raw payout.
+      const f = stats(r.filled[s]), w = stats(r.waste[s]);
+      console.log(`             contracts filled ${f.mean.toFixed(1)}/game (${f.min}-${f.max})  ` +
+        `wasted actions ${w.mean.toFixed(1)}/game`);
     }
     const si = stats(r.meta.silted), cu = stats(r.meta.cubes), st = stats(r.meta.stations);
     console.log(`  board: silted ${si.mean.toFixed(1)}/${CHANNELS.length} ch (${si.min}-${si.max})  ` +
@@ -86,10 +109,13 @@ if (process.argv[1]?.endsWith('sim.mjs')) {
   const N = Number(process.argv[2] || 200);
   printReport(runSuite({
     'mirror-balanced':  ['balanced', 'balanced', 'balanced'],
+    'mirror-smart':     ['smart', 'smart', 'smart'],
+    'smart-vs-2bal':    ['smart', 'balanced', 'balanced'],
+    'smart-vs-turtle':  ['smart', 'turtle', 'balanced'],
     'defector-vs-2':    ['defector', 'balanced', 'balanced'],
     'turtle-vs-2':      ['turtle', 'balanced', 'balanced'],
     'steward-vs-2':     ['steward', 'balanced', 'balanced'],
     'expander-vs-2':    ['expander', 'balanced', 'balanced'],
-    'all-archetypes':   ['defector', 'steward', 'expander', 'turtle'],
+    'all-archetypes':   ['smart', 'defector', 'expander', 'turtle'],
   }, N));
 }
