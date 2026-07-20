@@ -236,13 +236,13 @@
      actor badge or a floating prompt. */
   #zoomBar{position:absolute;left:12px;bottom:12px;z-index:4;display:flex;
     flex-direction:column;gap:5px}
-  /* Aiming prompt / build confirm bar, floated over the board. Bottom-centre, clear
-     of the zoom controls on the left, so it sits near where you are aiming rather
-     than in the action bar. Stronger backdrop than the sidebar version since it now
-     lies over textured water. */
-  #board #hint.prompt{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);
-    z-index:5;width:min(320px,calc(100% - 96px));margin:0;
-    background:color-mix(in srgb,var(--panel) 90%,var(--gold) 10%);
+  /* Aiming prompt / build confirm bar, floated over the board bottom-RIGHT: out of
+     the delta's centre so it hides as little map as possible, and clear of the zoom
+     controls at bottom-left. The board can still be panned out from under it, so no
+     target is ever trapped behind it. Slightly translucent for the same reason. */
+  #board #hint.prompt{position:absolute;right:14px;bottom:14px;
+    z-index:5;width:min(290px,calc(100% - 120px));margin:0;
+    background:color-mix(in srgb,var(--panel) 92%,var(--gold) 8%);opacity:.96;
     backdrop-filter:blur(4px);
     box-shadow:0 8px 26px rgba(0,0,0,.5),0 0 0 1px rgba(255,238,205,.08)}
   .zoomBtn{width:31px;height:31px;border-radius:7px;border:1px solid var(--line2);

@@ -67,8 +67,12 @@ export function createPanZoom({
   let drag = null;
   svg.addEventListener('pointerdown', (e) => {
     if (!canPan() || e.button !== 0) return;
+    // Do NOT capture the pointer yet. Capturing on press redirects the following
+    // `click` to the svg itself, so a plain click on a target no longer lands on
+    // the target — which broke target picking once pan was allowed while aiming.
+    // Capture is deferred to the first real move (below), so a stationary click
+    // stays a click and only an actual drag becomes a pan.
     drag = { id: e.pointerId, from: toBoard(e.clientX, e.clientY), moved: false };
-    svg.setPointerCapture(e.pointerId);
   });
   svg.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
@@ -77,6 +81,7 @@ export function createPanZoom({
     // Small threshold so a slightly shaky click is still a click.
     if (!drag.moved && Math.hypot(dx, dy) > 0.8) {
       drag.moved = true;
+      svg.setPointerCapture(e.pointerId);   // now it is a drag: capture for smooth pan
       svg.classList.add('dragging');
     }
     if (!drag.moved) return;

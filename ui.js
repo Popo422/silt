@@ -184,7 +184,11 @@ function buildMenu() {
     mirrors: [$('fx')],
     home: HOME_VIEW,
     buttons: { in: $('zIn'), out: $('zOut'), fit: $('zFit') },
-    canPan: () => !pendingAction,        // never pan while aiming a target
+    // Pan is always allowed, even while aiming or confirming a build. A drag ends
+    // in suppressClick (below), so it can never be misread as a target click, and
+    // the player needs to pan to see — or re-aim toward — a node the floating
+    // confirm bar might otherwise hide.
+    canPan: () => true,
     canKey: () => !book.open,            // the rulebook owns the keyboard when open
     onDragEnd: (moved) => { if (moved) suppressClick = true; },
   });
