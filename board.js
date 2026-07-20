@@ -7,7 +7,7 @@
 // it testable and keeps the dependency pointing one way.
 
 import { NODES, MOUTHS, CHANNELS, chKey, NODE_BY_ID } from './graph.js';
-import { buildTargets, shipOptions, canReachMouth, TUNING } from './engine.js';
+import { buildTargets, buildStepCost, shipOptions, canReachMouth, TUNING } from './engine.js';
 import { nodeName } from './theme.js';
 import { drawBayTrack } from './bays.js';
 import { el, use } from './svg.js';
@@ -137,8 +137,19 @@ export function drawBoard(ctx) {
   const owner = {};
   g.players.forEach((p, i) => p.stations.forEach(s => { owner[s] = i; }));
 
-  const btargets = pendingAction === 'build'
-    ? new Set(buildTargets(g, g.players[HUMAN])) : new Set();
+  // Build targets, filtered to what the player can actually afford (base + distance
+  // premium) — lighting a node you cannot pay for just invites a fizzle. Distance
+  // cost is captured alongside so the tooltip can show it.
+  const bstep = {};
+  const btargets = new Set();
+  if (pendingAction === 'build') {
+    const hp = g.players[HUMAN];
+    const base = TUNING.buildBase + hp.stations.length;
+    for (const id of buildTargets(g, hp)) {
+      const step = buildStepCost(g, hp, id);
+      if (hp.coins >= base + step) { btargets.add(id); bstep[id] = step; }
+    }
+  }
   // Stage one of shipping: the settlements you can send from. Suppressed once one
   // is picked (routes set), so the board switches from "choose an origin" to
   // "choose a destination" rather than showing both at once.
@@ -332,12 +343,19 @@ export function drawBoard(ctx) {
       : `The badge above it shows what it is holding: ${g.cubes[n.id]} ${good}. `
         + `${T.actions.ship.name} carries goods from here downstream to a bay, `
         + `which is how contracts get filled.`;
+    // When aiming a Build, a reachable node names its distance premium, so a far
+    // settle shows what the extra reach costs before you click.
+    const buildTip = btargets.has(n.id)
+      ? (bstep[n.id] > 0
+        ? ` Settle here: +${bstep[n.id]} gold for the distance, on top of the build cost.`
+        : ' Settle here — adjacent, no distance cost.')
+      : '';
     const grp = el('g', {
       class: 'node', 'data-node': n.id,
       'data-tip-title': nodeName(T, n.id),
-      'data-tip': MOUTHS.includes(n.id)
+      'data-tip': (MOUTHS.includes(n.id)
         ? 'Open sea. Goods delivered here score, and contracts naming this bay are filled here.'
-        : `A settlement site producing ${good}. ${stock}`,
+        : `A settlement site producing ${good}. ${stock}`) + buildTip,
     });
 
     // Tutorial highlight OR a legal target for the action being aimed right now.

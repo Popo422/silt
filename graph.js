@@ -34,7 +34,15 @@ export const NODES = [
   { id: 'C',  tier: 5, good: null,     x: 80, y: 88 },
 ];
 
-// Directed channels, always downstream. 30 total.
+// Directed channels, always downstream (tier N -> tier N+1). 37 total.
+//
+// The lower tiers BRAID: without the cross-links, each arm of the delta fed only
+// one bay, so a mid-tier opening on the edge (M1/M5) could reach just ONE bay even
+// on a pristine board — a structural lockout, and any contract naming another bay
+// was dead from turn one. The braid channels (marked) let the arms cross toward the
+// centre, so every opening reaches at least two bays, and the middle three reach
+// all three. Edges still reach fewer than the centre — position matters, but no
+// one is boxed out before play begins.
 export const CHANNELS = [
   ['S','U1'], ['S','U2'], ['S','U3'],
 
@@ -45,9 +53,11 @@ export const CHANNELS = [
 
   ['M1','L1'], ['M2','L1'], ['M2','L2'], ['M3','L2'],
   ['M3','L3'], ['M4','L3'], ['M4','L4'], ['M5','L4'],
+  ['M1','L2'], ['M2','L3'], ['M4','L2'], ['M5','L3'],   // braid: arms cross inward
 
   ['L1','A'],  ['L2','A'],  ['L2','B'],
   ['L3','B'],  ['L3','C'],  ['L4','C'],
+  ['L1','B'],  ['L4','B'],                              // braid: edges also feed the centre bay
 ];
 
 export const MOUTHS = ['A','B','C'];

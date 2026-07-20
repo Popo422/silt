@@ -13,6 +13,11 @@ export const TUNING = {
   freeStations: 4,          // was 3 — upkeep was evicting stations, networks shrank
   upkeepPerStation: 1,
   buildBase: 1,             // was 2 — Build was strictly worse than Ship
+  buildStepGold: 2,         // extra gold per hop of distance for a build beyond an
+                            // adjacent node. Build is now "settle any node your
+                            // network can reach over living water" (Brass-style), so
+                            // a bad opening can't box you into one arm — but reaching
+                            // across the delta is paid for, so position still matters.
   buildCubeBonus: 2,        // NEW: a new station arrives with 2 cubes already on it
   shipCubesMax: 2,
   shipPerCube: 2,
@@ -22,18 +27,19 @@ export const TUNING = {
   dredgeAmount: 1,          // was 2 — one dredge undid two ships; silt never accrued
   dredgeCoins: 1,           // NEW: dredging costs money, so it's a genuine trade
   maxDepth: 3,
-  siltPerShip: 1,           // depth lost by each channel that carried cargo
+  siltPerShip: 1,           // kept at 1 deliberately: silt 2 balances the bots but
+                            // kills so many channels that bays go unreachable and the
+                            // boxed-out/dead-contract rate (the thing the braided map
+                            // fixed) jumps back to ~55%. Low silt keeps routes alive;
+                            // turtle is suppressed by scoring levers instead.
   siltDownstream: false,    // rejected in sweep A: severs the delta, 0% live stations
   // Also tried: silt settling between slots, to let a route die before your second
   // action fires. Rejected — ship failures stayed at 0.00/game, so it added no
   // tension, just 1.7 more dead channels and -2.6 score.
-  tollPerShip: 3,           // coins paid to a channel's rights-holder when others ship
-                            // through. Raised from 2 so a claimed channel pays back its
-                            // dredging. Not higher: holding a busy corridor is structurally
-                            // hard (shipping silts it below scoring depth faster than you
-                            // can maintain it), so tolls are a fair side income, not a
-                            // dominant line — which is on-theme for a river that dies as
-                            // it is used.
+  tollPerShip: 4,           // coins the rights-holder collects when others ship through.
+                            // Part of the braided-map rebalance: the extra routes let a
+                            // high-volume shipper dodge more tolls, so this is raised to
+                            // keep claimed channels paying back their dredging.
   rightsEnabled: true,      // dredging claims a channel; others pay you to use it
   // Interaction rebalance (sim-swept): the toll/corridor category was scoring ~1
   // of ~50 for everyone, so nobody dredged or contested — and a camp-by-a-bay
@@ -54,10 +60,16 @@ export const TUNING = {
   // playing the river well, they no longer decide the game on one draw.
   contractScale: 1,
   handLimit: 4,
-  vpPerCoins: 7,            // was 5 — a hoarded-coin turtle converted gold to VP too
-                           // cheaply; softening this took the air out of passive play
+  vpPerCoins: 9,            // was 5, then 7 — a hoarded-coin camper converted gold to VP
+                           // too cheaply; softened again on the braided map to keep
+                           // passive play from paying
 
-  mouthVP: [12, 6, 2],      // raise the contested-delivery stakes
+  mouthVP: [8, 5, 3],       // was [12,6,2] — flattened. The old steep curve was
+                            // turtle's whole edge: camp one bay, win its 12-pt crown
+                            // uncontested. Flatter majority rewards PLACING in several
+                            // bays (which the braided map now lets you do) over
+                            // dominating one, so the spread-out player beats the camper
+                            // — turtle drops from ~48% to ~26% head-to-head.
   vpPerStation: 0,          // raw disc count shouldn't score; only working routes do
   vpLiveStation: 2,         // a station that still reaches the sea is the reward
   liveDepthMin: 1,        // at 2, ~0-21% of stations qualified; the bonus was dead weight
@@ -256,14 +268,51 @@ export function seatOrder(g) {
 
 // --- Legality -------------------------------------------------------------
 
-export function buildTargets(g, p) {
-  const set = new Set();
+// Build-anywhere (Brass-style): you may settle ANY empty node your network can
+// reach over living water — not just an immediate neighbour. Water is crossed in
+// either direction (you can expand upstream), so a bad opening no longer boxes you
+// into one arm of the delta. Distance is paid for (see buildStepCost), so reaching
+// across the map costs more and position still matters.
+//
+// Returns { node, steps } for every reachable empty non-mouth node: a multi-source
+// BFS from all your stations, hops crossing depth>0 channels, treated undirected.
+// The step count is the shortest hop distance from your nearest station.
+export function buildReach(g, p) {
   const owned = new Set(g.players.flatMap(x => x.stations));
-  for (const s of p.stations) {
-    for (const n of g.out[s])  if (!owned.has(n) && g.depth[chKey(s, n)] > 0) set.add(n);
-    for (const n of g.inn[s])  if (!owned.has(n) && g.depth[chKey(n, s)] > 0) set.add(n);
+  const dist = new Map();
+  const queue = [];
+  for (const s of p.stations) { dist.set(s, 0); queue.push(s); }
+  const out = [];
+  while (queue.length) {
+    const node = queue.shift();
+    const d = dist.get(node);
+    const nbrs = [
+      ...g.out[node].filter(n => g.depth[chKey(node, n)] > 0),
+      ...g.inn[node].filter(n => g.depth[chKey(n, node)] > 0),
+    ];
+    for (const n of nbrs) {
+      if (dist.has(n) || MOUTHS.includes(n)) continue;   // never settle/route a bay
+      dist.set(n, d + 1);
+      if (!owned.has(n)) out.push({ node: n, steps: d + 1 });
+      queue.push(n);
+    }
   }
-  return [...set].filter(id => !MOUTHS.includes(id));
+  return out;
+}
+
+// Legal build destinations as plain ids — every empty node the network can reach.
+export function buildTargets(g, p) {
+  return buildReach(g, p).map(t => t.node);
+}
+
+// Extra gold for reaching a distant node: the first hop is "adjacent" and free of
+// distance premium; each hop beyond costs buildStepGold. Keeps a local build cheap
+// and a cross-map build a real investment, so build-anywhere is freedom, not a
+// free teleport.
+export function buildStepCost(g, p, node) {
+  const t = buildReach(g, p).find(x => x.node === node);
+  const steps = t ? t.steps : 1;
+  return Math.max(0, steps - 1) * TUNING.buildStepGold;
 }
 
 export function dredgeTargets(g) {
@@ -450,8 +499,10 @@ export function execute(g, pi, action, choice, claimed) {
     }
     case 'build': {
       const node = choice?.node;
-      const cost = buildCost(p);
       if (!node) { g.log.push(`${p.name} tried to settle but had nowhere to build`); return; }
+      // Distance premium: reaching a far node costs more than an adjacent one.
+      const distGold = buildStepCost(g, p, node);
+      const cost = buildCost(p) + distGold;
       // Two players cannot take the same node in one slot. There used to be a
       // consolation payout here, but it fired 0.00 times per game across 300
       // simulated games — nodes are simply never contested. The real contested
@@ -471,8 +522,9 @@ export function execute(g, pi, action, choice, claimed) {
       // A station develops its node: it brings cubes online.
       const cubesBefore = g.cubes[node];
       g.cubes[node] = Math.min(TUNING.cubesPerNode, g.cubes[node] + TUNING.buildCubeBonus);
-      g.log.push(`${p.name} settles ${node} for ${cost} gold — it now holds ${g.cubes[node]} goods`);
-      emit(g, 'build', { pi, node, cost, cubesFrom: cubesBefore, cubesTo: g.cubes[node] });
+      g.log.push(`${p.name} settles ${node} for ${cost} gold`
+        + `${distGold ? ` (incl. ${distGold} for distance)` : ''} — it now holds ${g.cubes[node]} goods`);
+      emit(g, 'build', { pi, node, cost, distGold, cubesFrom: cubesBefore, cubesTo: g.cubes[node] });
       break;
     }
     case 'ship': {

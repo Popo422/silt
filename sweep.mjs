@@ -103,41 +103,27 @@ if (process.argv[1]?.endsWith('sweep.mjs')) {
     'contracts x2 + mouth up': { contractScale: 2, mouthVP: [12, 6, 2] },
   });
 
-  // D. Reward interaction: the field now includes smart (the real planner) and
-  // turtle (the camper that currently wins). Goal: a config where the interactive
-  // lines (dredging/tolls/corridor + the neglected-bay bonus) beat turtle, and the
-  // coin hoard converts to fewer points, WITHOUT scores leaving the 45-60 band or
-  // the win-spread blowing out.
-  const REBAL_FIELD = ['smart', 'turtle', 'balanced', 'steward'];
-  sweep('D. reward interaction (vs turtle camp)', {
+  // G. New-map rebalance. The braided map + build-anywhere made shipping easier
+  // (more routes, slower relative silting), which pushed scores to ~50 and re-
+  // inflated turtle to ~48%. Counter with harsher silt (the extra channels can
+  // absorb it now) and/or lower contracts. Watch: scores back toward ~45, turtle
+  // back toward the field.
+  // G. New-map rebalance at silt 1 (silt 2 fixes the bots but re-strands bays, so
+  // it is off the table). Suppress turtle and pull scores toward ~42 using scoring
+  // levers only: contracts, coin conversion, tolls. Also test the smart-vs-turtle
+  // head-to-head, where turtle is strongest, via a 3-bot field variant.
+  const MAP_FIELD = ['smart', 'turtle', 'balanced', 'steward'];
+  const H2H = ['smart', 'turtle', 'balanced'];
+  sweep('G. new-map rebalance (silt 1)', {
     'baseline':                    {},
-    'tolls up (rightsVP 3)':       { rightsVP: 3 },
-    'tolls+corridor up':           { rightsVP: 3, vpNetworkChannel: 2 },
-    'tolls+corridor+bonus':        { rightsVP: 3, vpNetworkChannel: 2, bayBonusGold: 6 },
-    'coins softer (vpPerCoins 7)': { vpPerCoins: 7 },
-    'full: interact up+coins soft':{ rightsVP: 3, vpNetworkChannel: 2, bayBonusGold: 6, vpPerCoins: 7 },
-  }, REBAL_FIELD);
-
-  // E. Contracts as an additive bonus, not the game. Interaction rebalance is now
-  // the baseline (rightsVP/network/bonus/coins already applied in TUNING), so this
-  // sweeps ONLY contractScale down from 2. Goal: contract share falls from ~45%
-  // toward ~30%, the top contract stops being ~30 pts (2/3 of a win), and scores
-  // settle back toward ~45-52 — without contracts becoming so weak nobody chases.
-  sweep('E. contracts additive not swingy', {
-    'contractScale 2.0 (now)': { contractScale: 2 },
-    'contractScale 1.5':       { contractScale: 1.5 },
-    'contractScale 1.25':      { contractScale: 1.25 },
-    'contractScale 1.0':       { contractScale: 1 },
-  }, REBAL_FIELD);
-
-  // F. Tolls bite harder to punish turtle's high-volume unowned shipping. Includes
-  // tollkeeper in the field — the bot that actually claims channels — because tolls
-  // only bite if SOMEONE owns the routes turtle ships through. Watch turtle's win%.
-  const TOLL_FIELD = ['smart', 'turtle', 'tollkeeper', 'balanced'];
-  sweep('F. tolls bite (vs turtle volume)', {
-    'tollPerShip 2 (now)': { tollPerShip: 2 },
-    'tollPerShip 3':       { tollPerShip: 3 },
-    'tollPerShip 4':       { tollPerShip: 4 },
-    'tollPerShip 5':       { tollPerShip: 5 },
-  }, TOLL_FIELD);
+    'coins 9 (soften hoard)':      { vpPerCoins: 9 },
+    'toll 4':                      { tollPerShip: 4 },
+    'mouth flatter [8,5,3]':       { mouthVP: [8, 5, 3] },
+    'coins9 + toll4':              { vpPerCoins: 9, tollPerShip: 4 },
+    'coins9 + toll4 + mouthflat':  { vpPerCoins: 9, tollPerShip: 4, mouthVP: [8, 5, 3] },
+  }, MAP_FIELD);
+  sweep('G2. same, smart-vs-turtle head-to-head', {
+    'baseline':                    {},
+    'coins9 + toll4 + mouthflat':  { vpPerCoins: 9, tollPerShip: 4, mouthVP: [8, 5, 3] },
+  }, H2H);
 }

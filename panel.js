@@ -158,7 +158,7 @@ export function actionDescriptions(tuning, cost) {
   return {
     dredge: `Deepen a channel by ${tuning.dredgeAmount}. Costs ${coin(tuning.dredgeCoins)}, `
           + `then others pay you to pass.`,
-    build:  `Found a new settlement. Costs ${coin(cost)}.`,
+    build:  `Settle any node you can reach by water. ${coin(cost)} + ${coin(tuning.buildStepGold)}/step of distance.`,
     ship:   `Carry up to ${tuning.shipCubesMax} goods downstream to the sea.`,
     survey: `Take ${coin(tuning.surveyCoins)} and draw ${tuning.surveyDraw} contracts, keep 1.`,
   };
@@ -173,10 +173,11 @@ export function actionTips(tuning, cost) {
           + `player pays you ${tuning.tollPerShip} gold each time they ship through, `
           + `and you score ${tuning.rightsVP} points for it at the end. `
           + `Dredging is how you turn other people's traffic into income.`,
-    build:  `Places a settlement on a node you can reach, bringing its goods online. `
-          + `Costs ${cost} gold now and rises with each one you own. `
-          + `Beyond ${tuning.freeStations} settlements you pay ${tuning.upkeepPerStation} `
-          + `gold upkeep per extra one every round, and you abandon them if you cannot pay.`,
+    build:  `Settles ANY empty node your network can reach over living water — not `
+          + `just a neighbour — so a wall of rival towns can never box you in. Costs `
+          + `${cost} gold plus ${tuning.buildStepGold} per channel of distance, and `
+          + `rises with each settlement you own. Beyond ${tuning.freeStations} you pay `
+          + `${tuning.upkeepPerStation} gold upkeep each per round, or abandon them.`,
     ship:   `Moves up to ${tuning.shipCubesMax} goods from one of your settlements to `
           + `the sea, paying ${tuning.shipPerCube} gold per good plus `
           + `${tuning.shipPerChannel} per channel crossed. This is how contracts get `

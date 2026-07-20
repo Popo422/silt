@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   newGame, execute, siltPhase, regrowPhase, upkeepPhase, score, seatOrder,
-  buildTargets, dredgeTargets, shipRoutes, shipOptions, canReachMouth, startValue,
+  buildTargets, buildReach, dredgeTargets, shipRoutes, shipOptions, canReachMouth, startValue,
   buildCost, TUNING, ACTIONS, channelOwner, largestNetwork,
 } from './engine.js';
 import { CHANNELS, MOUTHS, NODES, chKey, buildIndex, NODE_BY_ID } from './graph.js';
@@ -123,7 +123,7 @@ describe('build', () => {
     expect(buildCost(p)).toBe(TUNING.buildBase + 2);
   });
 
-  it('only offers empty adjacent nodes', () => {
+  it('only offers empty, non-mouth nodes', () => {
     const t = buildTargets(g, p);
     const owned = new Set(g.players.flatMap(x => x.stations));
     for (const id of t) {
@@ -131,6 +131,26 @@ describe('build', () => {
       expect(MOUTHS.includes(id)).toBe(false);
     }
     expect(t.length).toBeGreaterThan(0);
+  });
+
+  it('build-anywhere: offers nodes beyond immediate neighbours', () => {
+    // Build now reaches ANY node connected by living water, so the target set is
+    // larger than just the Datu's neighbours — that is the anti-boxed-in fix.
+    const home = p.stations[0];
+    const neighbours = new Set([...g.out[home], ...g.inn[home]]);
+    const reached = buildTargets(g, p);
+    expect(reached.length).toBeGreaterThan(neighbours.size);
+    expect(reached.some(id => !neighbours.has(id))).toBe(true);
+  });
+
+  it('charges a distance premium for a far build', () => {
+    const far = buildReach(g, p).sort((a, b) => b.steps - a.steps)[0];
+    expect(far.steps).toBeGreaterThan(1);
+    p.coins = 50;
+    const before = p.coins, base = buildCost(p);
+    execute(g, 0, 'build', { node: far.node }, noClaim());
+    expect(p.stations).toContain(far.node);
+    expect(before - p.coins).toBe(base + (far.steps - 1) * TUNING.buildStepGold);
   });
 
   it('never offers a mouth as a build target', () => {
@@ -179,9 +199,13 @@ describe('build', () => {
     expect(p.coins).toBe(0);
   });
 
-  it('refuses a non-adjacent node', () => {
-    const far = NODES.find(n => !buildTargets(g, p).includes(n.id) &&
-      !MOUTHS.includes(n.id) && !p.stations.includes(n.id));
+  it('refuses a node the network cannot reach by living water', () => {
+    // Build-anywhere still requires a living-water path. Sever every channel around
+    // the home node so nothing is reachable, then confirm a build is refused.
+    for (const n of g.out[p.stations[0]]) g.depth[chKey(p.stations[0], n)] = 0;
+    for (const n of g.inn[p.stations[0]]) g.depth[chKey(n, p.stations[0])] = 0;
+    expect(buildTargets(g, p).length).toBe(0);
+    const far = NODES.find(n => !MOUTHS.includes(n.id) && !p.stations.includes(n.id));
     const before = p.coins;
     execute(g, 0, 'build', { node: far.id }, noClaim());
     expect(p.stations).not.toContain(far.id);

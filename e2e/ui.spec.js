@@ -311,9 +311,10 @@ test.describe('board readability', () => {
   test('shows depth on every channel', async ({ page }) => {
     await open(page);
     await page.locator('#btnPlay').click();
+    const channels = await page.evaluate(() => Object.keys(window.SILT.state().depth).length);
     const depths = await page.locator('.ch').evaluateAll(
       els => els.map(e => e.dataset.depth));
-    expect(depths).toHaveLength(31);
+    expect(depths).toHaveLength(channels);
     expect(depths.every(d => d !== undefined && d !== '')).toBe(true);
   });
 
@@ -559,9 +560,10 @@ test.describe('board is a river, not a graph', () => {
   test('paints every channel with a depth texture', async ({ page }) => {
     await open(page);
     await page.locator('#btnPlay').click();
+    const channels = await page.evaluate(() => Object.keys(window.SILT.state().depth).length);
     const fills = await page.locator('.ch').evaluateAll(
       els => els.map(e => e.getAttribute('stroke')));
-    expect(fills).toHaveLength(31);
+    expect(fills).toHaveLength(channels);
     // Each must reference the pattern matching its own depth.
     const depths = await page.locator('.ch').evaluateAll(
       els => els.map(e => e.dataset.depth));
@@ -584,9 +586,10 @@ test.describe('board is a river, not a graph', () => {
     // A straight line between two points has no control points. Every channel
     // should be a cubic bezier — that meander is most of what stopped this
     // looking like a network diagram.
+    const channels = await page.evaluate(() => Object.keys(window.SILT.state().depth).length);
     const curved = await page.locator('.ch').evaluateAll(
       els => els.filter(e => (e.getAttribute('d') || '').includes('C')).length);
-    expect(curved).toBe(31);
+    expect(curved).toBe(channels);
   });
 
   test('the same channel curves identically across repaints', async ({ page }) => {

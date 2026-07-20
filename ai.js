@@ -1,7 +1,8 @@
 // SILT — bot strategies. Each is a distinct archetype so sims expose
 // whether the design punishes/rewards what it should.
-import { TUNING, buildCost, buildTargets, dredgeTargets, shipOptions, canReachMouth, contractFit } from './engine.js';
-import { chKey, NODE_BY_ID, GOODS } from './graph.js';
+import { TUNING, buildCost, buildTargets, buildStepCost, dredgeTargets, shipOptions,
+  canReachMouth, contractFit } from './engine.js';
+import { chKey, NODE_BY_ID, GOODS, MOUTHS } from './graph.js';
 
 // Pick the action pair for the round, then per-slot choices are made live.
 export const STRATEGIES = {
@@ -223,21 +224,49 @@ export function chooseTarget(g, p, action, strat) {
       return { channel: pool[0] };
     }
     case 'build': {
-      const t = buildTargets(g, p);
-      if (!t.length || p.coins < buildCost(p)) return null;
-      // Prefer nodes with cubes, live route to sea, and a good we lack.
-      t.sort((a, b) => scoreNode(g, p, b) - scoreNode(g, p, a));
-      return { node: t[0] };
+      // Only nodes the player can actually afford now (base + distance premium).
+      const affordable = buildTargets(g, p)
+        .filter(id => p.coins >= buildCost(p) + buildStepCost(g, p, id));
+      if (!affordable.length) return null;
+      affordable.sort((a, b) => scoreNode(g, p, b) - scoreNode(g, p, a));
+      return { node: affordable[0] };
     }
     default: return {};
   }
 }
 
+// Which bays can the player already reach? A build that opens a NEW bay is worth a
+// lot — it turns a locked-out region into scorable ground, the whole point of
+// build-anywhere. Distance is a cost, so it pulls the score back down.
+function baysReachedBy(g, p) {
+  const bays = new Set();
+  for (const s of p.stations) for (const m of MOUTHS) {
+    const seen = new Set([s]), stack = [s];
+    while (stack.length) {
+      const id = stack.pop();
+      if (id === m) { bays.add(m); break; }
+      for (const n of g.out[id]) if (g.depth[chKey(id, n)] >= 1 && !seen.has(n)) { seen.add(n); stack.push(n); }
+    }
+  }
+  return bays;
+}
 function scoreNode(g, p, id) {
   let s = g.cubes[id] * 2;
   if (canReachMouth(g, id, 1)) s += 4;
   if (canReachMouth(g, id, 2)) s += 2;
   const have = new Set(p.stations.map(x => NODE_BY_ID[x].good));
   if (!have.has(NODE_BY_ID[id].good)) s += 3;
+  // Opening a bay the player can't currently reach is the big win of build-anywhere.
+  const haveBays = baysReachedBy(g, p);
+  for (const m of MOUTHS) {
+    const seen = new Set([id]), stack = [id];
+    while (stack.length) {
+      const n = stack.pop();
+      if (n === m) { if (!haveBays.has(m)) s += 6; break; }
+      for (const nx of g.out[n]) if (g.depth[chKey(n, nx)] >= 1 && !seen.has(nx)) { seen.add(nx); stack.push(nx); }
+    }
+  }
+  // Distance is money: discourage overreach unless the node is worth it.
+  s -= buildStepCost(g, p, id);
   return s;
 }

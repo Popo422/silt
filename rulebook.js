@@ -66,9 +66,12 @@ export function pages(T) {
             see the next page. A dead channel can never be reopened.</dd>
 
           <dt>${A.build.name}<em>${A.build.gloss || 'build'}</em></dt>
-          <dd>Place a ${X.station.name.toLowerCase()} on an empty node next to one you
-            already hold. Costs <b>${TUNING.buildBase}${money} + 1 per
-            ${X.station.name.toLowerCase()} you own</b>. It arrives with
+          <dd>Place a ${X.station.name.toLowerCase()} on <b>any empty node your
+            network can reach over living water</b> — not just a neighbour, so a
+            wall of rival towns can never box you in. Costs
+            <b>${TUNING.buildBase}${money} + 1 per ${X.station.name.toLowerCase()}
+            you own</b>, plus <b>${TUNING.buildStepGold}${money} for each channel of
+            distance</b> beyond the first. It arrives with
             <b>${TUNING.buildCubeBonus}</b> goods and produces
             <b>${TUNING.stationYield}</b> more each round.</dd>
 

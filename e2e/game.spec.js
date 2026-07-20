@@ -51,10 +51,11 @@ test.describe('board rendering', () => {
   test('renders all nodes and channels', async ({ page }) => {
     await boot(page);
     await expect(page.locator('[data-node]')).toHaveCount(20);
-    // Match on the class, not the element type. These pinned `line.ch` and broke
-    // when channels became curved <path> ribbons — the contract is "31 channels
-    // carrying a depth", not "31 SVG lines".
-    await expect(page.locator('.ch')).toHaveCount(31);
+    // Match on the class, not the element type (channels are curved <path> ribbons),
+    // and count against the actual graph rather than a hardcoded number so a map
+    // change doesn't silently break the contract "one .ch per channel".
+    const channels = await page.evaluate(() => Object.keys(window.SILT.state().depth).length);
+    await expect(page.locator('.ch')).toHaveCount(channels);
   });
 
   test('shows the three mouths', async ({ page }) => {
@@ -66,9 +67,10 @@ test.describe('board rendering', () => {
 
   test('opens every channel at full depth', async ({ page }) => {
     await boot(page);
+    const channels = await page.evaluate(() => Object.keys(window.SILT.state().depth).length);
     const depths = await page.locator('.ch').evaluateAll(
       els => els.map(e => +e.dataset.depth));
-    expect(depths).toHaveLength(31);
+    expect(depths).toHaveLength(channels);
     expect(depths.every(d => d === 3)).toBe(true);
   });
 
