@@ -1,8 +1,54 @@
 // SILT — bot strategies. Each is a distinct archetype so sims expose
 // whether the design punishes/rewards what it should.
 import { TUNING, buildCost, buildTargets, buildStepCost, dredgeTargets, shipOptions,
-  canReachMouth, contractFit } from './engine.js';
+  canReachMouth, contractFit, score } from './engine.js';
 import { chKey, NODE_BY_ID, GOODS, MOUTHS } from './graph.js';
+
+// --- opponent model -------------------------------------------------------
+// The bots used to read only their OWN board — no sense of the score race or who
+// held which bay — so a human just kept delivering and won uncontested. These
+// helpers give `smart` a view of the whole table: where it stands, and how a move
+// changes its standing RELATIVE to the leader.
+
+// Goods each player has delivered to a bay, and the resulting majority ranking.
+// Returns { tally: [perPlayer], mine, leadIdx, leadN, secondN } for one mouth.
+function bayRace(g, me, mouth) {
+  const tally = g.players.map(x => GOODS.reduce((s, gd) => s + x.delivered[mouth][gd], 0));
+  const order = tally.map((n, i) => [i, n]).sort((a, b) => b[1] - a[1]);
+  return { tally, mine: tally[me], leadIdx: order[0][0], leadN: order[0][1],
+           secondN: order[1] ? order[1][1] : 0 };
+}
+
+// Live standings from the real scorer, so the bot's sense of "who is winning"
+// cannot drift from how the game actually scores. Returns { myTotal, bestOther,
+// leadIdx, behindBy } — behindBy > 0 means the bot is losing.
+function standings(g, me) {
+  const s = score(g);
+  const myTotal = s[me].total;
+  let bestOther = -Infinity, leadIdx = me;
+  s.forEach((row, i) => { if (i !== me && row.total > bestOther) { bestOther = row.total; leadIdx = i; } });
+  if (bestOther === -Infinity) bestOther = myTotal;
+  return { myTotal, bestOther, leadIdx, behindBy: bestOther - myTotal };
+}
+
+// Value of shipping `cubes` to `mouth` in terms of the BAY MAJORITY race — the
+// thing no bot watched. Taking a crown, defending one a rival is about to steal,
+// or denying the current leader are all worth real points the bot can see now.
+function bayControlValue(g, p, mouth, cubes) {
+  const r = bayRace(g, p.idx, mouth);
+  const after = r.mine + cubes;
+  let v = 0;
+  // Would this shipment give (or keep) me the top spot at this bay?
+  const topAfter = Math.max(after, ...r.tally.filter((_, i) => i !== p.idx));
+  const iLeadAfter = after >= topAfter && after > 0;
+  const iLeadNow = r.mine >= r.leadN && r.mine > 0;
+  if (iLeadAfter && !iLeadNow) v += TUNING.mouthVP[0];          // seize a crown
+  else if (iLeadNow && r.mine - r.secondN <= cubes) v += TUNING.mouthVP[0] * 0.7;  // defend a threatened one
+  // Extra weight when the bay I'd be taking it from is the current overall leader:
+  // denying the person beating me is worth more than points in a vacuum.
+  if (r.leadIdx !== p.idx && r.leadN > 0 && after >= r.leadN) v += 2;
+  return v;
+}
 
 // Can the player actually build SOMETHING this round — a reachable node it can pay
 // for once the distance premium is included? Every strategy used to gate Build on
@@ -113,11 +159,30 @@ export const STRATEGIES = {
     const hasLiveContract = p.contracts.some(c => contractFit(g, p, c) > c.vp * 0.4);
     const roomToDraw = p.contracts.length < TUNING.handLimit;
 
+    // Read the table, not just my own board. behindBy > 0 means I am losing, so I
+    // stop developing and fight for points; late and behind, I fight harder.
+    const { behindBy } = standings(g, p.idx);
+    const late = g.round >= TUNING.rounds - 2;
+    const pressing = behindBy > 0 && (late || behindBy > 6);
+    // A ship that would seize or defend a bay crown right now — the move a human
+    // makes to deny the leader, which the bots never did.
+    const contestBay = opts.some(o => bayControlValue(g, p, o.mouth, o.cubes) > 0);
+    // A high-traffic channel I could claim to tax the leader's routes.
+    const claims = claimTargets(g, p);
+
     const prog = [];
+    // When pressing, both slots go to the highest-swing plays: contest a bay, ship
+    // for contract points, or tax a rival's route. Development can wait.
+    if (pressing) {
+      if (opts.length) prog.push('ship');
+      if (contestBay && opts.length > 1 && prog.length < 2) prog.push('ship');
+      if (claims.length && p.coins >= TUNING.dredgeCoins && prog.length < 2) prog.push('dredge');
+      if (opts.length && prog.length < 2) prog.push('ship');
+    }
     // Grab land early — cost escalates, and more goods means more contracts reachable.
-    if (canBuild && p.stations.length < 4 && g.round <= 5) prog.push('build');
-    // Shipping is almost always worth it; chooseTarget picks the contract/bonus route.
-    if (opts.length) prog.push('ship');
+    if (canBuild && p.stations.length < 4 && g.round <= 5 && prog.length < 2) prog.push('build');
+    // Shipping is almost always worth it; chooseTarget picks the contract/bonus/bay route.
+    if (opts.length && prog.length < 2) prog.push('ship');
     // Protect a route about to die before it costs me a stranded station.
     if (dying.length && prog.length < 2) prog.push('dredge');
     // Cycle a hand I cannot deliver, rather than shipping into contracts I will
@@ -126,6 +191,7 @@ export const STRATEGIES = {
 
     while (prog.length < 2) {
       if (opts.length > prog.filter(a => a === 'ship').length) prog.push('ship');
+      else if (claims.length && p.coins >= TUNING.dredgeCoins) prog.push('dredge');
       else if (canBuild) prog.push('build');
       else if (dredgeTargets(g).length && p.coins >= TUNING.dredgeCoins) prog.push('dredge');
       else if (roomToDraw) prog.push('survey');
@@ -204,7 +270,11 @@ function contractGain(g, p, mouth, good, cubes) {
 function shipValue(g, p, o) {
   const gain = contractGain(g, p, o.mouth, o.good, o.cubes);
   const bonus = (g.bayBonus && g.bayBonus.mouth === o.mouth) ? g.bayBonus.amount : 0;
-  return gain * 3 + bonus + o.payout;
+  // Bay majority is ~24 of a 100 score and no bot contested it — the human just
+  // flooded one bay unopposed. Weight it so a ship that seizes or defends a crown
+  // competes with one that advances a contract.
+  const control = bayControlValue(g, p, o.mouth, o.cubes) * 2;
+  return gain * 3 + control + bonus + o.payout;
 }
 
 // Given a committed action, choose the concrete target at resolution time.
