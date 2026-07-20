@@ -910,23 +910,35 @@
        reads on one line — Guided first (the lead choice) spans the top. */
     .go{flex-direction:column;gap:9px;margin-top:16px}
     .go .btnBig,.go .btnGhost,.go .btnNarrow{width:100%;flex:none}
-    /* Compact the menu's vertical rhythm on a phone: the full-height content ran
-       ~1100px into a ~770px view, pushing the start buttons below the fold. Tighter
-       gaps and a shorter pitch bring it close to one screen; the card still scrolls
-       if a very short viewport needs it. */
-    .menuCard{padding:16px 16px;max-height:none}
-    .brand{margin-bottom:6px}
-    .brand h1{font-size:28px;letter-spacing:.18em}
-    .brand svg{width:34px;height:34px}
-    .tag{font-size:13px;margin-bottom:14px;line-height:1.45}
-    .fieldset{margin-bottom:12px}
-    .lbl{margin-bottom:5px}
-    .opt{padding:10px 8px}
-    .setupGrid{gap:12px}
-    .opponentsBox{padding:11px 12px}
-    .botRow{padding:8px 10px;margin-bottom:6px}
+    /* Single-screen mobile menu. The stacked full-width layout ran ~1000px+ into a
+       ~770px view; here each setting becomes one tight row (label left, pills right)
+       and the option subtitles drop, so setup + start buttons fit about one screen. */
+    #menu{padding:12px}
+    .menuCard{padding:14px 15px;max-height:none;width:100%}
+    .brand{margin-bottom:8px}
+    .brand h1{font-size:26px;letter-spacing:.16em}
+    .brand svg{width:30px;height:30px}
+    /* Pitch to a single tight line — it is marketing, not setup. */
+    .tag{font-size:12px;margin-bottom:12px;line-height:1.4;
+      display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    /* Each fieldset: label on the left, its pills filling the rest of the row. */
+    .fieldset{margin-bottom:9px;display:flex;align-items:center;gap:10px}
+    .lbl{margin:0;flex:0 0 58px;font-size:10px}
+    .opts{flex:1;gap:6px;flex-wrap:nowrap}
+    .opt{padding:8px 6px;min-width:0}
+    .opt .v{display:none}                 /* subtitles off — the key label is enough */
+    .opt .k{font-size:13px}
+    .setupGrid{gap:10px}
+    /* Opponents stays a full block but tightened. */
+    .setupCol:last-child .fieldset{display:block}   /* the opponents box is not a row */
+    .opponentsBox{padding:10px 11px}
+    .botRow{padding:7px 9px;margin-bottom:5px}
+    .botRow .desc{display:none}            /* strategy blurb off to save height */
+    .fieldNote{display:none}
     .go{margin-top:12px;gap:8px}
     .go .btnBig,.go .btnGhost{padding:12px}
+    .btnBig .bs,.btnGhost .bs{font-size:10px}
+    #gloss{display:none}                   /* the glossary details is pure extra height */
     /* collapse the log by default on phones */
     .log{max-height:150px;flex:0 0 auto}
     #legendPane{display:none}
