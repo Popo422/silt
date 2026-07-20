@@ -400,8 +400,10 @@ test.describe('interaction edge cases', () => {
     await page.evaluate(() => {
       const g = window.SILT.state();
       const keys = Object.keys(g.depth);
-      g.rights[keys[0]] = 0; g.depth[keys[0]] = 3;   // owned + alive -> marker
-      g.rights[keys[1]] = 1; g.depth[keys[1]] = 0;   // owned + dead  -> no marker
+      // Ownership is derived from dredge markers, so a real owned channel always
+      // carries at least one marker — the board renders the cube track from those.
+      g.rights[keys[0]] = 0; g.depth[keys[0]] = 3; g.markers[keys[0]] = { 0: 1 };   // owned + alive -> marker
+      g.rights[keys[1]] = 1; g.depth[keys[1]] = 0; g.markers[keys[1]] = { 1: 1 };   // owned + dead  -> no marker
     });
     await page.evaluate(() => window.SILT.program('survey', 'survey'));
     // re-render without advancing

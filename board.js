@@ -129,7 +129,7 @@ function ensureDefs(svg) {
 //     artImage, ico, nodeLabel, ART }
 export function drawBoard(ctx) {
   const { svg, g, human: HUMAN, playerColors: PC, theme: T,
-          pendingAction, highlight: hl, shipRoutes: routes, artImage, ico, nodeLabel, ART } = ctx;
+          pendingAction, aimNode, highlight: hl, shipRoutes: routes, artImage, ico, nodeLabel, ART } = ctx;
   svg.innerHTML = '';
   ensureDefs(svg);
   // Crosshair while aiming so the board reads as "click a target", not "drag me".
@@ -279,53 +279,68 @@ export function drawBoard(ctx) {
   }
 
   // --- toll markers (above the water)
+  // Ownership is a Hansa-style cube track, not a single dot: one small cube per
+  // dredge marker, laid along the channel from the upstream end toward the bay.
+  // The owner's cubes sit at the BAY end (B) — closest-to-the-sea holds the route,
+  // like Hansa's rightmost office — and challengers stack upstream behind them.
+  // Now the count IS the read: how many each player has, and how many empty-looking
+  // gaps until a challenger draws level, is legible on the board itself.
   for (const [A, B, o, pathD, k] of tolls) {
-    // Sit the marker ON the channel by sampling its curve. The straight-line
-    // midpoint drifts off the water wherever a channel bends hardest — which is
-    // exactly where the marker is most likely to be misread as belonging to a
-    // neighbouring channel.
-    let mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2;
-    if (pathD) {
-      const probe = el('path', { d: pathD });
-      svg.appendChild(probe);
-      try {
-        const pt = probe.getPointAtLength(probe.getTotalLength() / 2);
-        mx = pt.x; my = pt.y;
-      } catch { /* getPointAtLength needs layout; fall back to the midpoint */ }
-      probe.remove();
-    }
-    // A filled disc in the owner's colour, not a thin ring. The ring read as
-    // decoration at board scale — dark outline on dark water — and gave no clue
-    // that it meant "somebody owns this". Solid colour plus a light rim makes it
-    // an obvious game piece sitting on the channel.
-    // "Which of these did I dredge?" had no answer on the board: every claim was
-    // the same disc in a different colour, so telling yours apart meant
-    // remembering which colour you were. Yours gets a bright double rim.
-    const mine = o === HUMAN;
-    svg.appendChild(el('circle', { cx: mx, cy: my, r: mine ? 1.75 : 1.5,
-      fill: 'rgba(20,16,10,.9)', stroke: 'none' }));
-    if (mine) {
-      svg.appendChild(el('circle', { cx: mx, cy: my, r: 1.62, fill: 'none',
-        stroke: 'var(--gold)', 'stroke-width': 0.26, opacity: 0.95 }));
-    }
-    // The board shows only WHO owns the channel now — a clean colour dot. The
-    // marker tug-of-war (how many each player has, how close it is to flipping)
-    // lives in the side panel's claims list, so the board stays uncluttered.
     const marks = g.markers?.[k] ?? {};
-    const ownerN = marks[o] ?? 0;
+    // Cubes to draw: owner first (they take the bay end), then every challenger by
+    // descending count. Deterministic — the engine stores counts, not dredge order,
+    // so this is a stable layout, not a literal history.
+    const holders = Object.entries(marks)
+      .map(([idx, n]) => [+idx, n])
+      .filter(([, n]) => n > 0)
+      .sort((a2, b2) => (a2[0] === o ? -1 : b2[0] === o ? 1 : b2[1] - a2[1]));
+    const cubes = [];
+    for (const [idx, n] of holders) for (let i = 0; i < n; i++) cubes.push(idx);
+    if (!cubes.length) continue;
+
+    // Sample the curve so each cube sits ON the water. cubes[0] is the owner's, and
+    // it goes nearest the bay (B) — so walk t from the bay end backwards upstream.
+    const probe = pathD ? el('path', { d: pathD }) : null;
+    if (probe) svg.appendChild(probe);
+    const total = probe ? (() => { try { return probe.getTotalLength(); } catch { return 0; } })() : 0;
+    const N = cubes.length;
+    // Track length grows with cube count so a busy channel does not overlap its own
+    // cubes: ~72% of the channel at the low end, capped so it never reaches a node.
+    const span = Math.min(0.82, 0.4 + N * 0.11), lead = 0.7;   // bay end at t=0.7
+    const at = (i) => {
+      const frac = N === 1 ? lead : lead - (i / (N - 1)) * span * (lead - 0.1);
+      if (total) { try { const p = probe.getPointAtLength(total * frac); return [p.x, p.y]; } catch { /* fall through */ } }
+      return [A.x + (B.x - A.x) * frac, A.y + (B.y - A.y) * frac];
+    };
+
     const ownerName = g.players[o]?.name ?? 'Someone';
-    svg.appendChild(el('circle', { cx: mx, cy: my, r: 1.25, fill: PC[o],
-      stroke: mine ? 'rgba(255,248,230,1)' : 'rgba(255,240,214,.75)',
-      'stroke-width': mine ? 0.4 : 0.26, 'data-toll': o,
-      'data-tip-title': mine ? 'You hold this channel' : `${ownerName} holds this channel`,
-      'data-tip': mine
-        ? `You hold this with ${ownerN} marker${ownerN === 1 ? '' : 's'}. Others pay `
-          + `${TUNING.tollPerShip} gold to ship through; it scores ${TUNING.rightsVP} `
-          + `if still deep. See the claims list for who is contesting it.`
-        : `${ownerName} holds this with ${ownerN} marker${ownerN === 1 ? '' : 's'}; you `
-          + `pay ${TUNING.tollPerShip} gold to ship through. See the claims list to `
-          + `see how close it is to flipping.`,
-      class: hl?.kind === 'rights' ? 'pulse' : '' }));
+    const mine = o === HUMAN;
+    const ownerN = marks[o] ?? 0;
+    const tip = mine
+      ? `You hold this with ${ownerN} cube${ownerN === 1 ? '' : 's'} at the bay end. `
+        + `Others pay ${TUNING.tollPerShip} gold to pass; it scores ${TUNING.rightsVP} `
+        + `if still deep. A rival drawing level takes it — the cubes show how close.`
+      : `${ownerName} holds this with ${ownerN} cube${ownerN === 1 ? '' : 's'}; you pay `
+        + `${TUNING.tollPerShip} gold to pass. Dredge to add your own cube — match `
+        + `their count and the route flips to you.`;
+
+    cubes.forEach((idx, i) => {
+      const [cx, cy] = at(i);
+      const isOwner = idx === o;
+      const yours = idx === HUMAN;
+      const s = isOwner ? 1.05 : 0.85;               // smaller cubes, more fit per channel
+      // Backing so a coloured cube stays legible over any water depth.
+      svg.appendChild(el('rect', { x: cx - s / 2 - 0.14, y: cy - s / 2 - 0.14,
+        width: s + 0.28, height: s + 0.28, rx: 0.28, fill: 'rgba(20,16,10,.85)' }));
+      svg.appendChild(el('rect', { x: cx - s / 2, y: cy - s / 2, width: s, height: s,
+        rx: 0.22, fill: PC[idx],
+        stroke: yours ? 'var(--gold)' : 'rgba(255,240,214,.7)',
+        'stroke-width': yours ? 0.26 : 0.14,
+        'data-toll': o, 'data-tip-title': mine ? 'You hold this channel'
+          : `${ownerName} holds this channel`, 'data-tip': tip,
+        class: hl?.kind === 'rights' ? 'pulse' : '' }));
+    });
+    if (probe) probe.remove();
   }
 
   // --- nodes
@@ -389,6 +404,12 @@ export function drawBoard(ctx) {
     if (btargets.has(n.id) || sfrom.has(n.id)) {
       stroke = 'var(--gold)'; sw = 0.75;
       fill = 'color-mix(in srgb, var(--panel) 70%, var(--gold) 16%)';
+    }
+    // The build target currently staged in the confirm bar reads brighter than the
+    // other lit targets, so re-aiming shows which one the bar is pricing.
+    if (n.id === aimNode) {
+      stroke = 'var(--gold)'; sw = 1.15;
+      fill = 'color-mix(in srgb, var(--panel) 55%, var(--gold) 30%)';
     }
 
     // Expanding ring under the node, so a legal target announces itself from

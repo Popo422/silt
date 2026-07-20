@@ -135,8 +135,9 @@ export const REACTIVE = [
     when: (ev) => ev.type === 'ship' && (ev.tolls ?? []).length > 0,
     kicker: 'A toll',
     title: () => 'Somebody just paid rent on the river',
-    body: () => `See that little circle in somebody else's colour? That channel is `
-        + `claimed. Whoever dredged it owns it, and the rest of us pay every time we `
+    body: () => `See those little cubes in somebody else's colour? That channel is `
+        + `claimed — one cube per time they dredged it, and whoever has the most owns `
+        + `it. The rest of us pay every time we `
         + `pass through. So fixing up the river is not charity in this game — it is how `
         + `you put a tollbooth on everyone else's route.`,
   },

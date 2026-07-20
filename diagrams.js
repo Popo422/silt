@@ -126,10 +126,13 @@ export function figSilt(T) {
 export function figToll(T) {
   const anod = T.id === 'anod';
   const A = { x: 16, y: 20 }, B = { x: 84, y: 20 };
-  const mid = { x: 50, y: 20 };
-  const marker = `
-    <circle cx="${mid.x}" cy="${mid.y}" r="2.4" fill="var(--p1)"
-            stroke="rgba(20,16,10,.85)" stroke-width="0.5"/>`;
+  // A cube track like the board: owner (P2, blue) holds the bay end with two cubes,
+  // you (P1, gold) sit one cube behind — one dredge from drawing level.
+  const cube = (x, fill, mine) => `
+    <rect x="${x - 2}" y="18" width="4" height="4" rx="0.7" fill="${fill}"
+          stroke="${mine ? 'var(--gold)' : 'rgba(255,240,214,.7)'}" stroke-width="${mine ? 0.6 : 0.4}"/>`;
+  const marker = cube(58, 'var(--p1)', false) + cube(52, 'var(--p1)', false)
+               + cube(44, 'var(--p0)', true);
   return frame('tl', 100, 40, `
     ${channel('tl', A, B, 3, 'toll', marker)}
     ${node(A.x, A.y, { colour: 'var(--p0)', label: anod ? 'ikáw' : 'you' })}
@@ -139,7 +142,7 @@ export function figToll(T) {
     <text x="50" y="35" text-anchor="middle" font-size="2.8" fill="var(--gold)">
       ${anod ? `−${TOLL} ginto sa bawat daán` : `you pay ${TOLL} gold to pass`}</text>
   `, anod ? 'Ang naghukay ang naniningil.'
-          : 'The dot marks who owns a channel. Everyone else pays them to use it.');
+          : 'Cubes mark who owns a channel — most cubes holds it. Everyone else pays to pass.');
 }
 
 // The chokepoint idea: some settlements have exactly one way to the sea.

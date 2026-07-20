@@ -109,8 +109,9 @@ export function pages(T) {
       title: anod ? 'Singil' : 'Tolls',
       sub: 'why anyone repairs anything',
       body: `
-        <p>Dredging is not charity. When you dredge a channel you <b>claim</b> it,
-        and a marker in your colour appears on it.</p>
+        <p>Dredging is not charity. Each dredge drops a <b>cube</b> in your colour on
+        the channel, and whoever has the <b>most cubes</b> owns it — the claim shows
+        as a cube track running toward the bay.</p>
         ${figToll(T)}
         <ul>
           <li>Anyone may still use that channel — nothing is blocked.</li>
@@ -122,7 +123,9 @@ export function pages(T) {
             your <b>largest connected run</b> of claims is worth a further
             <b>${TUNING.vpNetworkChannel}</b> — so a corridor you own end to end
             beats the same number of tolls scattered across the delta.</li>
-          <li>Dredging a channel someone else holds <b>takes</b> the claim from them.</li>
+          <li>Dredging a channel someone else holds adds your cube — <b>match or
+            beat their count</b> and the claim flips to you, so a channel they
+            dredged twice takes two of yours to take.</li>
           <li>If a channel silts out completely, the claim is lost.</li>
         </ul>
         <p class="tip">This is the heart of the game. Maintaining the route everyone

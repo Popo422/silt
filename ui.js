@@ -393,6 +393,9 @@ function render() {
     svg: $('svg'),
     g, human: HUMAN, playerColors: PC, theme: T,
     pendingAction,
+    // The build node currently staged in the confirm bar, so the board can mark it
+    // while the player re-aims among the other lit targets.
+    aimNode: pendingConfirm?.choice?.node ?? null,
     highlight: tut?.step()?.highlight?.() ?? null,
     // The routes to draw while a ship origin is selected: every navigable path
     // from it to a bay, so you can see where the goods could go before choosing.
@@ -701,9 +704,16 @@ function wireBoard() {
     // A pan ends in a click on whatever the cursor landed on. Without this, a
     // drag that finishes over a node would also resolve the pending action.
     if (suppressClick) { suppressClick = false; return; }
-    if (!pendingAction || pendingConfirm) return;   // ignore board clicks while confirming
+    if (!pendingAction) return;
     const t = e.target.closest?.('[data-hit], [data-hit-node]');
     if (!t) return;
+    // While a build is pending confirmation, clicking another build target just
+    // moves the pick there and re-prices it — you can keep re-aiming until Confirm.
+    // Any other click (a channel, a ship target) is ignored mid-confirm.
+    if (pendingConfirm) {
+      if (t.dataset.hitKind === 'build') confirmBuild(t.dataset.hitNode);
+      return;
+    }
     // Only BUILD gets a confirm step — its cost varies with distance, so a misclick
     // could overspend. Dredge (fixed cost) and ship resolve on the click as before.
     if (t.dataset.hit) { resolveHuman({ channel: t.dataset.hit }); return; }

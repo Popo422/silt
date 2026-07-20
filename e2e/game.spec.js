@@ -302,8 +302,8 @@ test.describe('dredging rights', () => {
       Object.values(window.SILT.state().rights).filter(r => r !== null).length);
     expect(owned).toBeGreaterThan(0);
     await expect(page.locator('.ch[data-rights="0"]').first()).toBeAttached();
-    // And the marker itself must be on the board, not just the data attribute.
-    await expect(page.locator('circle[data-toll="0"]').first()).toBeAttached();
+    // And a marker cube itself must be on the board, not just the data attribute.
+    await expect(page.locator('[data-toll="0"]').first()).toBeAttached();
   });
 
   test('pays the holder when an opponent ships through', async ({ page }) => {
