@@ -495,6 +495,15 @@
   .skipAim:hover{border-color:var(--gold);color:var(--ink)}
   .skipAim kbd{font-family:inherit;font-size:9.5px;opacity:.7;
     border:1px solid currentColor;border-radius:3px;padding:0 3px;margin-left:4px}
+  /* Confirm: the primary action of the confirm bar, so it reads as the button we
+     DO want you to press — solid gold, unlike the understated Skip/Pick-another. */
+  .confirmTxt{display:block;margin-bottom:7px}
+  .confirmTxt b{color:var(--gold)}
+  .confirmYes{display:block;width:100%;margin-top:7px;padding:6px 9px;min-height:30px;
+    border:1px solid var(--gold);border-radius:5px;font-family:inherit;font-size:12px;
+    font-weight:600;background:color-mix(in srgb,var(--gold) 22%,var(--panel));
+    color:var(--ink);cursor:pointer;transition:.12s}
+  .confirmYes:hover{background:color-mix(in srgb,var(--gold) 34%,var(--panel))}
   .ct{font-size:12px;padding:7px 0;border-bottom:1px solid var(--line);color:var(--dim);
     display:flex;gap:9px;align-items:flex-start;cursor:help;line-height:1.45}
   .ct:last-child{border-bottom:none}

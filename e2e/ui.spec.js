@@ -461,6 +461,8 @@ test.describe('effects', () => {
       if (pd) {
         const sel = pd === 'dredge' ? '#svg [data-hit]' : '#svg [data-hit-node]';
         if (await page.locator(sel).count()) await page.locator(sel).first().click({ force: true });
+        // Build/dredge/ship-dest now raise a confirm bar; press it if it appeared.
+        if (await page.locator('#confirmYes').count()) await page.locator('#confirmYes').click();
       }
       if (await page.evaluate(() => (window.SILT.state()?.round ?? 0) > 1)) break;
       await page.waitForTimeout(60);
@@ -700,6 +702,8 @@ test.describe('pan and zoom', () => {
     await page.locator('#svg [data-hit-kind="ship"]').first().click({ force: true });
     const dest = page.locator('#svg [data-hit-kind="shipTo"]');
     if (await dest.count()) await dest.first().click({ force: true });
+    // A ship destination now raises a confirm bar (see cost, then commit) — press it.
+    if (await page.locator('#confirmYes').count()) await page.locator('#confirmYes').click();
     // Ship resolves into slot 2 (survey), which raises its own keep-1 picker;
     // clearing it leaves nothing pending, which is the resolved state under test.
     if (await page.locator('#survey.on').isVisible()) {

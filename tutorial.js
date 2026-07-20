@@ -124,8 +124,8 @@ export const STEPS = [
     id: 'commit',
     title: () => 'Lock it in',
     body: (T) => 'Press commit. Everyone reveals at once and resolves in seat order — '
-        + 'you cannot change your mind partway through, which is the whole tension '
-        + 'of the game. You will be asked to click the board to aim each action. '
+        + 'you cannot change your mind partway through. '
+        + 'You will be asked to click the board to aim each action. '
         + `And a rule worth knowing now: both your actions resolve first, then silt `
         + `settles only after — so you can never ${actName(T, 'ship')} a channel and `
         + `${actName(T, 'dredge')} it clean again in the same round. Repairs always `

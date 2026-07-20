@@ -235,6 +235,33 @@ test.describe('actions', () => {
     expect(legal).toBe(true);
   });
 
+  // Build-anywhere makes a far settle cost a variable distance premium, so clicking
+  // a node shows a confirm bar (its cost) before spending. Nothing is spent until
+  // Confirm; Pick another backs out with no cost.
+  test('clicking a build target confirms the cost before spending', async ({ page }) => {
+    await boot(page);
+    const coins = await page.evaluate(() => window.SILT.state().players[0].coins);
+    await page.evaluate(() => window.SILT.program('build', 'survey'));
+    await page.evaluate(() => window.SILT.commit());
+    await page.waitForFunction(() => window.SILT.pending() === 'build');
+
+    await page.locator('#svg [data-hit-kind="build"]').first().click({ force: true });
+    // A confirm bar appears naming the cost; nothing has been spent.
+    await expect(page.locator('#confirmYes')).toBeVisible();
+    await expect(page.locator('#hint')).toContainText(/gold/i);
+    expect(await page.evaluate(() => window.SILT.state().players[0].coins)).toBe(coins);
+
+    // Pick another backs out (no spend); a second click + Confirm commits.
+    await page.locator('#confirmNo').click();
+    await expect(page.locator('#confirmYes')).toHaveCount(0);
+    const stations = await page.evaluate(() => window.SILT.state().players[0].stations.length);
+    await page.locator('#svg [data-hit-kind="build"]').first().click({ force: true });
+    await page.locator('#confirmYes').click();
+    await page.waitForFunction(() => window.SILT.pending() !== 'build');
+    expect(await page.evaluate(() => window.SILT.state().players[0].stations.length)).toBe(stations + 1);
+    expect(await page.evaluate(() => window.SILT.state().players[0].coins)).toBeLessThan(coins);
+  });
+
   test('dredge only offers damaged channels', async ({ page }) => {
     await boot(page);
     // silt the board a little first

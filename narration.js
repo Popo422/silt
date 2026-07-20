@@ -89,9 +89,9 @@ export const AMBIENT = [
     round: 1, slot: 1,
     kicker: 'Slot 2',
     title: () => 'And now the second ones',
-    body: () => `Here is the tension. We locked these in before any of this happened, `
-        + `and there is no changing our minds now. You are watching people find out `
-        + `whether they guessed right.`,
+    body: () => `We locked these in before any of this happened, and there is no `
+        + `changing our minds now. You are watching people find out whether they `
+        + `guessed right.`,
   },
   {
     id: 'mid-game',
@@ -100,8 +100,7 @@ export const AMBIENT = [
     title: () => 'Take a look at the water now',
     body: (T) => `Compare that to round one. Here is the thing — nobody attacked the `
         + `river. Not once. Every bit of missing ${T.terms.depth.name.toLowerCase()} `
-        + `is just somebody having a good turn. That is the whole idea of the game, `
-        + `right there on the board.`,
+        + `is just somebody having a good turn.`,
   },
   {
     id: 'late',
@@ -146,7 +145,7 @@ export const REACTIVE = [
     once: true,
     when: (ev) => ev.type === 'blocked',
     kicker: 'Blocked',
-    title: () => 'Ooh — that plan just fell apart',
+    title: () => 'That plan just fell apart',
     body: () => `The route silted shut before the action even fired. They committed to `
         + `that two slots ago and there was no calling it back. That is the cost of `
         + `choosing blind, and everybody at the table pays it eventually.`,
@@ -177,7 +176,7 @@ export const REACTIVE = [
     once: true,
     when: (ev) => ev.type === 'contract',
     kicker: 'Contract filled',
-    title: (T) => `A ${T.terms.contract.name.toLowerCase()} — and this is most of the score`,
+    title: (T) => `A ${T.terms.contract.name.toLowerCase()} just filled`,
     body: () => `That fills the moment the goods arrive, highest value first — no `
         + `action needed, it just happens. And those points are banked. Even if the `
         + `whole route dries up next round, they keep them.`,

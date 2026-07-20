@@ -1,7 +1,7 @@
 import { NODE_BY_ID } from './graph.js';
 import {
   newGame, execute, siltPhase, bayBonusPhase, regrowPhase, upkeepPhase, score, seatOrder,
-  buildTargets, dredgeTargets, shipOptions, buildCost, surveyDrawnFor, TUNING,
+  buildTargets, dredgeTargets, shipOptions, buildCost, buildStepCost, surveyDrawnFor, TUNING,
 } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
 import { createTutorial, stepText } from './tutorial.js';
@@ -15,7 +15,8 @@ import { createSpeech } from './speech.js';
 import { ART } from './art.js';
 import { drawBoard as paintBoard, el, insetRadius } from './board.js';
 import {
-  renderContracts, renderPlayers, buildClaims, renderClaims, renderActions, renderSlots, renderAimHint,
+  renderContracts, renderPlayers, buildClaims, renderClaims, renderActions, renderSlots,
+  renderAimHint, confirmMeta,
   renderSurvey,
   renderFinalScore, renderActor,
   actionDescriptions, actionTips,
@@ -37,6 +38,13 @@ let shipFrom = null;
 // one — the decision used to be made for you (silently kept the highest VP), so
 // +3 gold was the only sign the action did anything.
 let surveyDraw = null;
+// A target has been clicked but not yet committed: { choice, title, detail }.
+// Build now costs a variable distance premium, so clicking a node used to spend
+// gold you never saw coming. This holds the pick and shows its cost so you can
+// Confirm, Pick another, or Skip — nothing resolves until you say so. It does NOT
+// let you undo a fired action (the committed-actions tension is deliberate); it
+// only makes the aim itself reconsiderable.
+let pendingConfirm = null;
 // Watch mode. When active, seat 0 is driven by a bot like every other seat, so
 // the resolution walker never stops for input and the game plays itself. The
 // demo object owns only the commentary laid over that — never the moves.
@@ -86,20 +94,11 @@ const SPEED_LABEL = { normal: '1×', fast: '2×', off: 'off' };
 // for why it cannot start on its own.
 const speech = createSpeech();
 
-// Hold time is NOT the effect's full duration — effects are allowed to overlap,
-// and the tail of one plays out under the start of the next. But the previous
-// numbers (0.45x, capped at 420ms) overlapped them almost to nothing: a dredge
-// animates for 950ms and got 420 of it, the silt sweep animates for 1400ms and
-// got 420. With three players resolving in turn, every effect was cut off before
-// it read and the round looked like flicker.
-//
-// That was an overcorrection. Waiting for every animation to FINISH made a round
-// take 7.4s, which is a minute of watching per game — so this keeps the overlap
-// but gives each effect most of its own time. A round lands around 3.5s: long
-// enough to follow, short enough not to drag.
-//
-// The floor matters as much as the ceiling. A short effect that resolves in
-// 260ms still needs a beat afterwards or two fast actions read as one event.
+// Effects overlap (the tail of one plays under the next), so hold is most of an
+// effect's duration, not all of it. Too little overlap flickers; waiting for every
+// animation to finish made a round 7.4s. This lands a round ~3.5s. The floor
+// matters too: a 260ms effect still needs a beat after, or two fast actions read
+// as one.
 const HOLD_MIN = 420;
 const HOLD_MAX = 900;
 const holdFor = (ms) =>
@@ -299,6 +298,9 @@ function wireBook() {
     // wins; otherwise it backs out of aiming, which is the only other state that
     // traps input.
     if (!book.open) {
+      // Esc backs out one level: from a pending confirm it undoes the click (you
+      // can re-aim); from plain aiming it skips the action.
+      if (e.key === 'Escape' && pendingConfirm) { e.preventDefault(); confirmNo(); return; }
       if (e.key === 'Escape' && pendingAction) { e.preventDefault(); skipAim(); }
       return;
     }
@@ -368,17 +370,9 @@ function startDemo() {
     step: () => step(),
     roundOf: () => g.round,
     rounds: () => TUNING.rounds,
-    // Watch mode always runs at full pace, whatever the speed toggle says.
-    //
-    // These captions are 40-word paragraphs and they are the entire reason the
-    // mode exists, so the viewer needs time to actually read one. Speed 'off'
-    // persists across sessions, so anyone who had ever turned animation off then
-    // clicked Watch got all 8 rounds in under 100ms and landed on the final score
-    // having seen nothing at all.
-    //
-    // Note these multipliers run the other way to intuition: 'fast' is 0.5, so
-    // LARGER means slower. Flooring with Math.max against SPEEDS.fast picked the
-    // smaller value and cut every caption to 1.3s — still unreadable.
+    // Watch mode always runs at full pace whatever the speed toggle says — the
+    // captions are the whole point and need time to read. (Speed 'off' persists, so
+    // a returning viewer who clicked Watch used to get all 8 rounds in <100ms.)
     wait: (ms) => wait(ms * SPEEDS.normal),
     silent: () => false,
     // Lets the demo hold a caption until the voice has finished saying it.
@@ -449,17 +443,10 @@ function render() {
         + `you can't ${shipW} a river and ${dredgeW} it back the same round.`;
   }
 
-  // "8g · 1b · 0✓" was unreadable without a key. Same numbers, but each is
-  // labelled and carries a tooltip naming what it counts.
-  //
-  // Each row also shows the program that player revealed. This is a game with NO
-  // hidden information — what everyone committed IS the game — and until now the
-  // only way to learn it was to catch log lines as they scrolled past. Slots stay
-  // face-down until the round is committed, so it never leaks a decision early.
-  // Stays revealed for the whole round once committed, not just while the queue
-  // is draining. Gating on `queue` made the programs vanish the instant the last
-  // action resolved — which is exactly when you want to look at what everyone
-  // did. Cleared when the next round's programs are wiped.
+  // Player rows show each revealed program — a game with NO hidden information, so
+  // what everyone committed IS the game. Slots stay face-down until commit (never
+  // leaking a decision early), then revealed for the whole round, not just while
+  // the queue drains — you most want to look right after the last action resolves.
   renderPlayers({
     el: $, players: g.players, human: HUMAN, revealed: committedThisRound,
     colors: PC, T, tuning: TUNING, icon, ico, esc,
@@ -489,9 +476,13 @@ function render() {
   $('go').disabled = !(program[0] && program[1]) || !!pendingAction;
   // Survey is resolved in its own picker (with its own skip), so the board aim
   // hint would be a second, redundant prompt pointing at nothing on the board.
+  // A pending confirm replaces the aim hint with the Confirm / Pick-another / Skip
+  // bar for the target just clicked.
   renderAimHint({ el: $, pendingAction: surveyDraw ? null : pendingAction, T,
-    stage: shipFrom ? 'dest' : 'origin' });
+    stage: shipFrom ? 'dest' : 'origin', confirm: pendingConfirm, esc });
   $('skipAim')?.addEventListener('click', skipAim);
+  $('confirmYes')?.addEventListener('click', confirmYes);
+  $('confirmNo')?.addEventListener('click', confirmNo);
   renderSurvey({ el: $, draw: surveyDraw, T, tuning: TUNING, nodeLabel, esc, onKeep: keepSurvey });
   renderTutorial();
 }
@@ -707,16 +698,40 @@ function wireBoard() {
     // A pan ends in a click on whatever the cursor landed on. Without this, a
     // drag that finishes over a node would also resolve the pending action.
     if (suppressClick) { suppressClick = false; return; }
-    if (!pendingAction) return;
+    if (!pendingAction || pendingConfirm) return;   // ignore board clicks while confirming
     const t = e.target.closest?.('[data-hit], [data-hit-node]');
     if (!t) return;
+    // Only BUILD gets a confirm step — its cost varies with distance, so a misclick
+    // could overspend. Dredge (fixed cost) and ship resolve on the click as before.
     if (t.dataset.hit) { resolveHuman({ channel: t.dataset.hit }); return; }
     const id = t.dataset.hitNode;
     const kind = t.dataset.hitKind;
-    if (kind === 'build') resolveHuman({ node: id });
-    else if (kind === 'shipTo') shipTo(id);      // stage two: chosen bay
+    if (kind === 'build') confirmBuild(id);
+    else if (kind === 'shipTo') shipTo(id);       // stage two: chosen bay
     else pickShip(id);                            // stage one: origin, or single-route
   });
+}
+
+// Stash a build target + its cost text, then render the confirm bar. Nothing
+// resolves until Confirm; Pick-another / Skip back out. Text from confirmMeta().
+function confirmBuild(node) {
+  pendingConfirm = { choice: { node }, ...confirmMeta({
+    g, human: HUMAN, T, nodeLabel, choice: { node }, buildCost, buildStepCost,
+  }) };
+  render();
+}
+// Confirm the stashed pick — now it actually resolves and spends.
+function confirmYes() {
+  if (!pendingConfirm) return;
+  const choice = pendingConfirm.choice;
+  pendingConfirm = null;
+  shipFrom = null;
+  resolveHuman(choice);
+}
+// Back out of the pick without spending anything — re-aim, targets light again.
+function confirmNo() {
+  pendingConfirm = null;
+  render();
 }
 
 async function resolveHuman(choice) {
@@ -775,8 +790,8 @@ function pickShip(from) {
 }
 
 // Stage two. A destination bay was clicked; ship there. Among routes to the same
-// bay (a settlement can reach one bay several ways) take the highest-paying,
-// which is also the fewest channels crossed and so the least silt caused.
+// bay (a settlement can reach one bay several ways) take the highest-paying, which
+// is also the fewest channels crossed and so the least silt caused.
 function shipTo(mouth) {
   const opts = shipOptions(g, g.players[HUMAN])
     .filter(o => o.from === shipFrom && o.mouth === mouth);

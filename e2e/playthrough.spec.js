@@ -36,6 +36,13 @@ async function clickTarget(page) {
   const pending = await page.evaluate(() => window.SILT.pending());
   if (!pending) return false;
 
+  // A confirm bar is already up from a previous click — commit it and let the loop
+  // re-evaluate. Handling it first keeps the state machine simple: bar up -> Confirm.
+  if (await page.locator('#confirmYes').count()) {
+    await page.locator('#confirmYes').click();
+    return true;
+  }
+
   // Survey resolves in its own sidebar picker (draw 3, keep 1), not on the board —
   // it has no board target, so keep the first card offered to dismiss it.
   if (pending === 'survey') {
@@ -46,14 +53,16 @@ async function clickTarget(page) {
   }
 
   if (pending === 'dredge') {
-    const hit = page.locator('#svg [data-hit]').first();
-    await expect(hit).toBeAttached();
-    await hit.click({ force: true });
+    // Dispatch a real click event straight on the dredge hit-path. A curved <path>'s
+    // bounding-box centre is often off the stroke, so Playwright's coordinate click
+    // can miss it on the braided map — but the delegated #svg listener only cares
+    // that the event's target is the [data-hit] element, which this guarantees.
+    await page.locator('#svg [data-hit]').first().dispatchEvent('click');
     return true;
   }
-  // build / ship: click a highlighted node's oversized hit circle. Shipping is
-  // two-stage — an origin click leaves pending 'ship' and lights the destination
-  // bays, which the next loop iteration clicks the same way.
+  // build / ship: click a highlighted node's oversized hit circle. A BUILD click
+  // raises a confirm bar (its cost varies with distance) — the top-of-loop handler
+  // presses it next iteration. Ship is two-stage and resolves on the bay click.
   const node = page.locator('#svg [data-hit-node]').first();
   await expect(node).toBeAttached();
   await node.click({ force: true });

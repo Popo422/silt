@@ -275,14 +275,50 @@ const AIM_HINTS = {
 //
 // `stage` distinguishes the two halves of shipping: pick an origin, then pick a
 // destination bay. The rest of the actions have one stage and ignore it.
-export function renderAimHint({ el, pendingAction, T, stage }) {
+// Title + cost text for a clicked-but-uncommitted BUILD, so the confirm bar can
+// show what pressing Confirm costs. Only build confirms (its distance premium is
+// the surprising cost); dredge and ship resolve on the click. Pure formatting —
+// takes the engine helpers it needs rather than importing them.
+export function confirmMeta({ g, human, T, nodeLabel, choice, buildCost, buildStepCost }) {
+  const p = g.players[human];
+  const step = buildStepCost(g, p, choice.node);
+  const cost = buildCost(p) + step;
+  return {
+    title: `${T.actions.build.name} ${nodeLabel(T, choice.node)}`,
+    detail: `Costs ${cost} gold${step ? ` (incl. ${step} for distance)` : ''}.`,
+  };
+}
+
+export function renderAimHint({ el, pendingAction, T, stage, confirm, esc }) {
   const hint = el('hint');
   if (!pendingAction) { hint.style.display = 'none'; return; }
   hint.style.display = 'block';
+
+  // A target is clicked but not committed: show what it will do and cost, with
+  // Confirm to spend, Pick another to re-aim (undo the click), Skip to decline. The
+  // player can always change their mind here — nothing has been spent yet.
+  if (confirm) {
+    hint.innerHTML = `
+      <span class="aimTxt confirmTxt"><b>${esc(confirm.title)}</b> — ${esc(confirm.detail)}</span>
+      <button id="confirmYes" class="confirmYes"
+              data-tip="Do it. This spends the cost shown and resolves the action.">
+        Confirm
+      </button>
+      <button id="confirmNo" class="skipAim"
+              data-tip="Change your mind — nothing has been spent. Pick a different target.">
+        Pick another
+      </button>
+      <button id="skipAim" class="skipAim"
+              data-tip="Decline this action entirely. The slot is spent, but no target is used.">
+        Skip <kbd>Esc</kbd>
+      </button>`;
+    return;
+  }
+
   hint.innerHTML = `<span class="aimTxt"></span>
     <button id="skipAim" class="skipAim"
-            data-tip="Resolve this action without a target. It is already in play, so
-                      the action is spent either way — this just declines to use it.">
+            data-tip="Decline this action without a target. It is already in play, so
+                      the slot is spent either way — this just declines to use it.">
       Skip <kbd>Esc</kbd>
     </button>`;
   const key = pendingAction === 'ship' && stage === 'dest' ? 'shipTo' : pendingAction;

@@ -25,8 +25,7 @@ export const THEME = {
   subtitle: 'drift · silt · the river carries it away',
   pitch: `A delta euro set in the Pasig before Spanish sails. You are rival <b>datu</b>
     moving <b>kalakal</b> down to the bay — and every trip you make chokes the
-    channel behind you. <b>The river dies because everyone is prospering.</b>
-    No hidden cards. You lose because you misread the water.`,
+    channel behind you. No hidden cards. You lose because you misread the water.`,
 
   // --- actions -------------------------------------------------------------
   // name = Tagalog label, gloss = what it does in English.
@@ -159,8 +158,8 @@ export const PLAIN = {
   title: 'SILT',
   subtitle: 'a river delta game',
   pitch: `A river delta euro. You ship goods to the sea — and every shipment chokes
-    the channel it used. <b>The map dies because everyone is winning.</b>
-    No hidden cards, no take-that. You lose because you misread the board.`,
+    the channel it used. No hidden cards, no take-that. You lose because you
+    misread the board.`,
   actions: {
     dredge: { name: 'Dredge', gloss: '', note: 'restore depth, claim its toll' },
     build:  { name: 'Build',  gloss: '', note: 'new station' },

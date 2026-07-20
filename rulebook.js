@@ -192,7 +192,8 @@ export function pages(T) {
             pays when other people actually use it.</li>
           <li><b>Do not over-dredge.</b> Every action spent repairing is one not
             spent earning; the player who fixes everything usually loses.</li>
-          <li><b>Long routes pay more and die faster.</b> That tension is the game.</li>
+          <li><b>Long routes pay more and die faster.</b> Weigh the payout against
+            what it costs you to keep the water open.</li>
           <li><b>Chase the bay bonus.</b> When everyone floods one
             ${X.mouth.name.toLowerCase()}, the quietest one pays a premium next round —
             and its route has usually silted from neglect. Being the one who dredges
