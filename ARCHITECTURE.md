@@ -136,10 +136,20 @@ node audit.mjs                 how often each rule actually fires
 node gen-assets.mjs            list asset batches + cost
 ```
 
-CI runs lint, unit, e2e and a balance sim on every push. The balance job exists
-because the engine is pure and therefore reproducible — same seeds, same numbers —
-so a rules change that quietly wrecks the game surfaces immediately rather than
-three commits later.
+There is no CI — run the checks locally before you push:
+
+```bash
+npx eslint .                  lint
+npx vitest run                unit + architecture guards
+npx playwright test --workers=1   browser end-to-end
+node sim.mjs 200              balance, reproducible from fixed seeds
+```
+
+`--workers=1` matters: the e2e suite flakes under parallel workers on some
+machines (a passing test fails purely from contention), so run it serially.
+The balance sim is worth running after any rules change — the engine is pure, so
+same seeds give same numbers, and a change that quietly wrecks the game shows up
+as a moved win rate rather than three commits later.
 
 The lint config is deliberately narrow: it catches temporal-dead-zone reads,
 unused bindings left after a refactor, and identical ternary branches. It does not
