@@ -4,6 +4,14 @@ import { TUNING, buildCost, buildTargets, buildStepCost, dredgeTargets, shipOpti
   canReachMouth, contractFit } from './engine.js';
 import { chKey, NODE_BY_ID, GOODS, MOUTHS } from './graph.js';
 
+// Can the player actually build SOMETHING this round — a reachable node it can pay
+// for once the distance premium is included? Every strategy used to gate Build on
+// base cost alone, then chooseTarget would filter every target out on price and the
+// slot fizzled — a wasted action. This is the gate they should all use instead.
+function canAffordBuild(g, p) {
+  return buildTargets(g, p).some(id => p.coins >= buildCost(p) + buildStepCost(g, p, id));
+}
+
 // Pick the action pair for the round, then per-slot choices are made live.
 export const STRATEGIES = {
   // Balanced: expand early, ship always, dredge only lifelines that are actually dying.
@@ -12,7 +20,7 @@ export const STRATEGIES = {
   balanced(g, p) {
     const opts = shipOptions(g, p);
     const dying = myFragileChannels(g, p).filter(k => g.depth[k] === 1);
-    const canBuild = p.coins >= buildCost(p) && buildTargets(g, p).length;
+    const canBuild = canAffordBuild(g, p);
     const prog = [];
 
     // Early game: land grabs compound. Prioritise them.
@@ -37,7 +45,7 @@ export const STRATEGIES = {
     const opts = shipOptions(g, p);
     const prog = [];
     if (opts.length) prog.push('ship');
-    if (p.coins >= buildCost(p)) prog.push('build');
+    if (canAffordBuild(g, p)) prog.push('build');
     while (prog.length < 2) prog.push(opts.length > 1 ? 'ship' : 'survey');
     return prog.slice(0, 2);
   },
@@ -47,7 +55,7 @@ export const STRATEGIES = {
     const opts = shipOptions(g, p);
     const prog = [];
     if (opts.length) prog.push('ship');
-    if (p.stations.length < 3 && p.coins >= buildCost(p)) prog.push('build');
+    if (p.stations.length < 3 && canAffordBuild(g, p)) prog.push('build');
     while (prog.length < 2) prog.push(opts.length ? 'ship' : 'survey');
     return prog.slice(0, 2);
   },
@@ -60,7 +68,7 @@ export const STRATEGIES = {
     const prog = [];
     if (fragile.length) prog.push('dredge');
     if (opts.length) prog.push('ship');
-    if (prog.length < 2 && p.coins >= buildCost(p) && buildTargets(g, p).length) prog.push('build');
+    if (prog.length < 2 && canAffordBuild(g, p)) prog.push('build');
     while (prog.length < 2) prog.push(fragile.length ? 'dredge' : 'survey');
     return prog.slice(0, 2);
   },
@@ -73,7 +81,7 @@ export const STRATEGIES = {
     const prog = [];
     if (claims.length && p.coins >= TUNING.dredgeCoins) prog.push('dredge');
     if (opts.length) prog.push('ship');
-    if (prog.length < 2 && p.coins >= buildCost(p) && buildTargets(g, p).length) prog.push('build');
+    if (prog.length < 2 && canAffordBuild(g, p)) prog.push('build');
     while (prog.length < 2) prog.push(claims.length ? 'dredge' : 'survey');
     return prog.slice(0, 2);
   },
@@ -81,7 +89,7 @@ export const STRATEGIES = {
   // Expander: builds relentlessly. Tests whether escalating cost is a real brake.
   expander(g, p) {
     const prog = [];
-    if (p.coins >= buildCost(p) && buildTargets(g, p).length) prog.push('build');
+    if (canAffordBuild(g, p)) prog.push('build');
     const opts = shipOptions(g, p);
     if (opts.length) prog.push('ship');
     while (prog.length < 2) prog.push('survey');
@@ -98,7 +106,7 @@ export const STRATEGIES = {
     // A lifeline is a fragile channel on a route one of my stations needs to reach
     // the sea — losing it strands the station. Only depth-1 ones are urgent.
     const dying = myFragileChannels(g, p).filter(k => g.depth[k] === 1);
-    const canBuild = p.coins >= buildCost(p) && buildTargets(g, p).length;
+    const canBuild = canAffordBuild(g, p);
     // A hand is "dead" when nothing in it is meaningfully attainable — time to
     // survey for something I can actually deliver. Threshold is a small fraction
     // of a contract's face value, so a genuinely stuck card triggers a refresh.
