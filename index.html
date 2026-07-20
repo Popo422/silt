@@ -642,6 +642,20 @@
     background:var(--panel);border:1px solid var(--gold);border-radius:10px;padding:16px 18px;
     box-shadow:0 12px 40px rgba(0,0,0,.55);display:none}
   #tut.on{display:block}
+  /* Collapse toggle: a small caret in the box's top-right corner. */
+  .tutHide{position:absolute;top:8px;right:8px;width:26px;height:26px;padding:0;
+    border:1px solid var(--line2);border-radius:6px;background:rgba(18,14,9,.4);
+    color:var(--dim);font:inherit;font-size:13px;line-height:1;cursor:pointer;z-index:1}
+  .tutHide:hover{border-color:var(--gold);color:var(--ink)}
+  #tut h4{padding-right:26px}                 /* leave room for the caret */
+  /* Collapsed: the box is gone and the small "Guide ▴" tab takes its place. */
+  #tut.collapsed{display:none!important}
+  .tutShow{position:absolute;left:22px;top:22px;z-index:30;
+    padding:8px 12px;border:1px solid var(--gold);border-radius:8px;
+    background:var(--panel);color:var(--gold);font:inherit;font-size:12px;font-weight:600;
+    cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+  .tutShow[hidden]{display:none}
+  .tutShow:hover{background:color-mix(in srgb,var(--gold) 14%,var(--panel))}
   #tut .step{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);
     font-weight:700;margin-bottom:6px}
   #tut h4{margin:0 0 7px;font-size:15px;font-weight:600}
@@ -964,6 +978,11 @@
     #tut h4{font-size:14px}
     #tut p{font-size:12px;line-height:1.4}
     #tut .step{font-size:9px}
+    /* The "show guide" tab sits at the board's bottom-right when collapsed, out of
+       the way of the zoom controls on the left. */
+    .tutShow{left:auto;right:8px;top:auto;bottom:8px}
+    /* Bigger tap target for the collapse caret on touch. */
+    .tutHide{width:32px;height:32px;font-size:15px}
     /* Must restate: the rule above is later in the cascade than .watching and
        would otherwise drag the caption back to the top of a phone screen. */
     #tut.watching{left:10px;right:10px;top:auto;bottom:10px;width:auto;transform:none}
@@ -1112,6 +1131,10 @@
     </div>
 
     <div id="tut">
+      <!-- Collapse the box out of the way so it stops covering the board — useful on
+           a phone where it eats real map space. Tapping the pill (#tutShow) or this
+           button toggles it back. -->
+      <button id="tutHide" class="tutHide" data-tip="Hide this — the board needs the room" aria-label="Hide guide">▾</button>
       <div class="step" id="tutStep"></div>
       <h4 id="tutTitle"></h4>
       <p id="tutBody"></p>
@@ -1124,6 +1147,8 @@
         <span class="wait" id="tutWait"></span>
       </div>
     </div>
+    <!-- Shown only while the guide is collapsed: a small tab to bring it back. -->
+    <button id="tutShow" class="tutShow" hidden data-tip="Show the guide">Guide ▴</button>
 
     <div id="ov"><div class="card">
       <h2>Final score</h2>

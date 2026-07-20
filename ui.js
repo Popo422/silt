@@ -30,6 +30,7 @@ const BOT_KEYS = ['balanced', 'tollkeeper', 'steward', 'expander', 'turtle', 'de
 
 let g, program, picking, pendingAction, seed, queue, tut, config;
 let mtab = 'play';            // active mobile bottom-panel tab (see setTab)
+let lastTutStep = null;       // last tutorial step id shown, to auto-reveal on change
 // Two-stage shipping. Clicking a settlement used to resolve immediately, sending
 // the goods down whichever route paid most — you never chose the bay or the
 // path. Now the first click selects the origin and lights up every route from
@@ -179,6 +180,7 @@ function buildMenu() {
   wireBoard();
   wireTabs();
   wireHeaderMenu();
+  wireTutToggle();
   createTips();
   // Pan/zoom knows nothing about the game; the two places it needs game state
   // are injected as predicates so the dependency points one way only.
@@ -508,9 +510,12 @@ function renderTutorial() {
     return;
   }
   const s = tut?.step();
-  if (!s) { box.classList.remove('on'); return; }
+  if (!s) { box.classList.remove('on'); setTutCollapsed(false); return; }
 
   box.classList.add('on');
+  // A new step is new information — reveal the box even if the player had collapsed
+  // the last one, so they never miss what is being taught. They can re-collapse it.
+  if (s.id !== lastTutStep) { lastTutStep = s.id; setTutCollapsed(false); }
   const { i, n } = tut.progress();
   // Step text is resolved against the active theme so the words the tutorial
   // tells you to click are the words actually painted on the buttons.
@@ -732,6 +737,19 @@ function wireTabs() {
   for (const b of document.querySelectorAll('#mtabs button'))
     b.addEventListener('click', () => setTab(b.dataset.tab));
   setTab('play');
+}
+
+// Collapse/restore the tutorial (and watch-mode caption) box, so it can be tucked
+// out of the way when it covers too much board — most useful on a phone. The small
+// "Guide ▴" tab is shown in its place while collapsed.
+function setTutCollapsed(collapsed) {
+  $('tut').classList.toggle('collapsed', collapsed);
+  // Only offer the restore tab when the box actually has something to show.
+  $('tutShow').hidden = !collapsed || !$('tut').classList.contains('on');
+}
+function wireTutToggle() {
+  $('tutHide').addEventListener('click', () => setTutCollapsed(true));
+  $('tutShow').addEventListener('click', () => setTutCollapsed(false));
 }
 
 // The mobile header hamburger. Reuses the desktop buttons' handlers so there is
