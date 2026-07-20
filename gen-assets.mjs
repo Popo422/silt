@@ -228,6 +228,35 @@ const BATCHES = {
     },
   },
 
+  // App icon / favicon. Renders as small as 16px in a browser tab, so this is the
+  // most brutal downscale in the whole file — finer than a board sprite. The brief
+  // is pushed harder than ICON toward a single bold mark: one channel splitting to
+  // the sea, filling a rounded square, on a solid delta-green field rather than
+  // cream (a favicon sits on the browser chrome, not the parchment board). Several
+  // variations because at this size the winner is a coin toss and you judge at 16px.
+  favicon: {
+    size: [512, 512],
+    neg: 'photograph, 3d render, glossy, gradient, fine detail, thin lines, small '
+      + 'elements, busy, cluttered, text, letters, words, watermark, signature, '
+      + 'realistic, noisy, map, compass',
+    prompts: {
+      'icon-delta': 'a bold minimal app icon of a river delta seen from directly '
+        + 'above, one thick teal channel splitting into three that fan out to the '
+        + 'sea, flat two-tone teal and gold, on a solid dark delta-green rounded '
+        + 'square, chunky heavy shapes, no fine detail, strong readable silhouette, '
+        + 'fills the frame, centered, matte flat colour, not photorealistic, '
+        + 'hand-painted board game emblem, no text',
+      'icon-channel': 'a bold minimal app icon: a single thick gold river channel '
+        + 'branching into a delta on a solid teal rounded square, flat two-tone, '
+        + 'chunky heavy shapes, no fine detail, strong silhouette, fills the frame, '
+        + 'centered, matte flat colour, not photorealistic, board game emblem, no text',
+      'icon-mark':    'a bold minimal circular emblem of a braided river delta, '
+        + 'three teal channels reaching a gold sea, flat two-tone on dark green, '
+        + 'thick simple shapes, no fine detail, fills the frame, centered, matte '
+        + 'flat colour, not photorealistic, hand-painted board game seal, no text',
+    },
+  },
+
   menu: {
     size: [1024, 768],
     prompts: {
