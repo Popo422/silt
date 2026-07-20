@@ -110,7 +110,7 @@ export function actionTips(tuning, cost) {
           + `the sea, paying ${tuning.shipPerCube} gold per good plus `
           + `${tuning.shipPerChannel} per channel crossed. This is how contracts get `
           + `filled — and every channel you use silts up by ${tuning.siltPerShip}.`,
-    survey: `Draws ${tuning.surveyDraw} contracts and keeps the best one, plus `
+    survey: `Draws ${tuning.surveyDraw} contracts and lets you keep one, plus `
           + `${tuning.surveyCoins} gold. Contracts are most of your score, so a hand `
           + `with nothing in it is usually worth fixing before anything else.`,
   };
@@ -235,13 +235,18 @@ export function renderFinalScore({ el, rows, players, T, tuning, esc }) {
     [T.terms.mouth.name, 'Bay majorities',
       `Each bay is scored separately: ${tuning.mouthVP.join(' / ')} points for `
       + 'first, second and third by goods delivered there. Ties share.'],
-    [anod ? 'Lupà' : 'Network', 'Live network',
+    [anod ? 'Lupà' : 'Sites', 'Live settlements',
       'Settlements that can still reach the sea at the end. A settlement cut off '
       + 'by dead water scores nothing.'],
     [T.terms.toll.name, 'Channels you own',
       `${tuning.rightsVP} points for each channel you dredged that is still at `
       + `depth ${tuning.rightsDepthMin} or more at the end. Let one silt below `
       + 'that and it scores you nothing.'],
+    // The Hansa-style network bonus. Distinct from the per-channel toll column:
+    // this rewards them being CONNECTED, not just owned.
+    [anod ? 'Ugnáy' : 'Network', 'Connected network',
+      `${tuning.vpNetworkChannel} extra point for every channel in your single `
+      + 'largest connected run of owned channels — a corridor beats scattered tolls.'],
     [T.terms.coins.name, 'Leftover gold', 'Unspent gold, converted at the end.'],
     [T.terms.silted.name, 'Dead water penalty',
       `You LOSE ${tuning.siltedPenaltyVP} point for every dead channel touching `
@@ -254,7 +259,8 @@ export function renderFinalScore({ el, rows, players, T, tuning, esc }) {
       : `<th>${label}</th>`)).join('')}</tr>
     ${rows.map(x => `<tr class="${x.total === best ? 'win' : ''}">
       <td>${esc(players[x.i].name)}</td><td>${x.contracts}</td><td>${x.mouth}</td>
-      <td>${x.network}</td><td>${x.held}</td><td>${x.coin}</td><td>${x.silt}</td>
+      <td>${x.network}</td><td>${x.held}</td><td>${x.netBonus}</td>
+      <td>${x.coin}</td><td>${x.silt}</td>
       <td>${x.total}</td></tr>`).join('')}
   </table>`;
 }
@@ -273,4 +279,37 @@ export function renderActor({ el, pi, action, T, colors, who }) {
   b.textContent = verb ? `${who} — ${verb}` : who;
   b.style.color = colors[pi];
   b.classList.add('on');
+}
+
+// The Survey picker: draw three contracts, keep one.
+//
+// This is the whole point of the action, and it used to happen with no player
+// input at all — the engine silently kept the highest-VP card, so +gold looked
+// like Survey's only effect. Now the three sit in the sidebar above your hand,
+// so you choose WITH the board and your existing contracts in view: which one is
+// worth chasing depends on where your settlements are and which bays you can
+// reach, and a modal that hid the board would take away exactly that context.
+export function renderSurvey({ el, draw, T, tuning, nodeLabel, esc, onKeep }) {
+  const box = el('survey');
+  if (!draw) { box.classList.remove('on'); box.innerHTML = ''; return; }
+  const card = (c, i) => {
+    const pts = Math.round(c.vp * tuning.contractScale);
+    const where = c.mouth ? nodeLabel(T, c.mouth) : 'any bay';
+    const kinds = c.types > 1 ? `${c.types} different kinds` : 'any one kind';
+    return `<button class="surveyCard" data-keep="${i}">
+      <span class="vp">${pts}</span>
+      <span class="cbody">Deliver <b>${c.need}</b> goods, <b>${esc(kinds)}</b>,
+        to <b>${esc(where)}</b></span>
+    </button>`;
+  };
+  box.innerHTML = `<div class="surveyHead">${esc(T.actions.survey.name)} — keep one</div>
+    <div class="surveyCards">${draw.map(card).join('')}</div>
+    <button class="surveySkip" data-skip>Keep the best <kbd>Esc</kbd></button>`;
+  box.classList.add('on');
+  for (const b of box.querySelectorAll('[data-keep]')) {
+    b.addEventListener('click', () => onKeep(draw[+b.dataset.keep]));
+  }
+  // Skip lives IN the picker — it was landing in the aim-hint slot far bottom-
+  // right, nowhere near the cards it dismisses. `null` means keep-best default.
+  box.querySelector('[data-skip]').addEventListener('click', () => onKeep(null));
 }

@@ -1,7 +1,7 @@
 import { NODE_BY_ID } from './graph.js';
 import {
   newGame, execute, siltPhase, regrowPhase, upkeepPhase, score, seatOrder,
-  buildTargets, dredgeTargets, shipOptions, buildCost, TUNING,
+  buildTargets, dredgeTargets, shipOptions, buildCost, surveyDrawnFor, TUNING,
 } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
 import { createTutorial, stepText } from './tutorial.js';
@@ -16,6 +16,7 @@ import { ART } from './art.js';
 import { drawBoard as paintBoard, el, insetRadius } from './board.js';
 import {
   renderContracts, renderPlayers, renderActions, renderSlots, renderAimHint,
+  renderSurvey,
   renderFinalScore, renderActor,
   actionDescriptions, actionTips,
 } from './panel.js';
@@ -32,6 +33,10 @@ let g, program, picking, pendingAction, seed, queue, tut, config;
 // path. Now the first click selects the origin and lights up every route from
 // it; the second click on a bay commits. shipFrom holds that in-between state.
 let shipFrom = null;
+// Survey's "keep 1 of 3". The three drawn contracts, held while the player picks
+// one — the decision used to be made for you (silently kept the highest VP), so
+// +3 gold was the only sign the action did anything.
+let surveyDraw = null;
 // Watch mode. When active, seat 0 is driven by a bot like every other seat, so
 // the resolution walker never stops for input and the game plays itself. The
 // demo object owns only the commentary laid over that — never the moves.
@@ -460,8 +465,12 @@ function render() {
     el: $, player: g.players[HUMAN], T, tuning: TUNING, nodeLabel, esc,
   });
   $('go').disabled = !(program[0] && program[1]) || !!pendingAction;
-  renderAimHint({ el: $, pendingAction, T, stage: shipFrom ? 'dest' : 'origin' });
+  // Survey is resolved in its own picker (with its own skip), so the board aim
+  // hint would be a second, redundant prompt pointing at nothing on the board.
+  renderAimHint({ el: $, pendingAction: surveyDraw ? null : pendingAction, T,
+    stage: shipFrom ? 'dest' : 'origin' });
   $('skipAim')?.addEventListener('click', skipAim);
+  renderSurvey({ el: $, draw: surveyDraw, T, tuning: TUNING, nodeLabel, esc, onKeep: keepSurvey });
   renderTutorial();
 }
 
@@ -631,7 +640,25 @@ async function step() {
           (action === 'build' && buildTargets(g, p).length && p.coins >= buildCost(p)) ||
           (action === 'ship' && shipOptions(g, p).length);
         if (needsTarget) { pendingAction = action; render(); return; }
-        execute(g, pi, action, {}, queue.claimed);
+        // Survey is the one action whose choice is not on the board: draw three
+        // contracts, show them, let the player keep one. Only worth prompting if
+        // the hand has room — a full hand discards the draw regardless, so there
+        // is nothing to choose.
+        if (action === 'survey' && p.contracts.length < TUNING.handLimit) {
+          const drawn = surveyDrawnFor(g);
+          if (drawn.length > 1) {
+            // Hand the walker off to the picker exactly as a board target does:
+            // set pendingAction, stash the cards, return. keepSurvey() resolves
+            // and calls step() to resume, same as resolveHuman().
+            pendingAction = 'survey';
+            surveyDraw = drawn;
+            render();
+            return;
+          }
+          execute(g, pi, action, { drawn }, queue.claimed);
+        } else {
+          execute(g, pi, action, {}, queue.claimed);
+        }
       } else {
         execute(g, pi, action, chooseTarget(g, p, action, p.strat), queue.claimed);
       }
@@ -674,10 +701,19 @@ async function resolveHuman(choice) {
   if (!pendingAction || !queue) return;
   const a = pendingAction;
   pendingAction = null;
-  shipFrom = null;   // whichever way the ship resolved or was skipped, aim is over
+  shipFrom = null;      // whichever way the ship resolved or was skipped, aim is over
+  surveyDraw = null;    // and the survey picker, likewise
   execute(g, HUMAN, a, choice, queue.claimed);
   await flush({ actor: HUMAN, action: a });
   step();
+}
+
+// The player picked one of the three surveyed contracts (or skipped, keeping the
+// best by default). Resolves through the same path as any other choice, passing
+// the drawn set back so the engine keeps the chosen card and returns the rest.
+function keepSurvey(contract) {
+  if (pendingAction !== 'survey' || !surveyDraw) return;
+  resolveHuman({ drawn: surveyDraw, contract });
 }
 
 // Aiming was a one-way door: click an action, and the only exit was clicking a
@@ -687,6 +723,14 @@ async function resolveHuman(choice) {
 // path taken when no legal target exists at all. Said plainly on the button.
 function skipAim() {
   if (!pendingAction) return;
+  // Skipping a survey must resolve with the cards ALREADY drawn (keeping the
+  // best), not an empty choice — an empty choice would make execute() draw a
+  // second time. Skipping any other action just declines its target.
+  if (pendingAction === 'survey' && surveyDraw) {
+    say(`${T.actions.survey.name}: kept the best.`);
+    resolveHuman({ drawn: surveyDraw });
+    return;
+  }
   say(`${T.actions[pendingAction].name}: skipped.`);
   resolveHuman({});
 }
@@ -861,6 +905,11 @@ window.SILT = {
   pending: () => pendingAction,
   autoResolve: () => {
     const p = g.players[HUMAN];
+    // A pending survey has already drawn its cards; resolve with them (keeping the
+    // best) rather than letting execute draw a second set.
+    if (pendingAction === 'survey' && surveyDraw) {
+      return resolveHuman({ drawn: surveyDraw }).then(settled);
+    }
     return resolveHuman(chooseTarget(g, p, pendingAction, 'balanced') ?? {}).then(settled);
   },
   tutorial: () => tut && ({ active: tut.active, ...tut.progress(), id: tut.step()?.id }),

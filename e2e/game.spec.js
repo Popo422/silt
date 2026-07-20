@@ -21,6 +21,18 @@ const boot = async (page, seed = 20260719, players = 4) => {
   return errors;
 };
 
+// Commit the current program, then clear whatever prompt it raised — a board
+// target OR the survey keep-1 picker — so the round finishes. Many tests use
+// `survey, survey` purely as a neutral way to advance a round; since Survey now
+// opens a picker, "commit and move on" has to dismiss it.
+async function commitAndClear(page) {
+  await page.evaluate(() => window.SILT.commit());
+  for (let i = 0; i < 4; i++) {
+    if (!await page.evaluate(() => window.SILT.pending())) break;
+    await page.evaluate(() => window.SILT.autoResolve());
+  }
+}
+
 // Play a full game, auto-resolving any target prompts.
 async function playFullGame(page) {
   for (let r = 0; r < 8; r++) {
@@ -105,11 +117,15 @@ test.describe('programming UI', () => {
 });
 
 test.describe('actions', () => {
-  test('survey pays coins without prompting for a target', async ({ page }) => {
+  test('survey pays coins and prompts to keep a contract', async ({ page }) => {
     await boot(page);
     const before = await page.evaluate(() => window.SILT.state().players[0].coins);
     await page.evaluate(() => window.SILT.program('survey', 'survey'));
     await page.evaluate(() => window.SILT.commit());
+    // Survey now offers a "keep 1 of 3" picker rather than silently keeping the
+    // best; the gold is paid the moment it resolves, once you pick.
+    await expect(page.locator('#survey.on')).toBeVisible();
+    await page.locator('.surveyCard').first().click();
     const after = await page.evaluate(() => window.SILT.state().players[0].coins);
     expect(after).toBeGreaterThan(before);
   });
@@ -213,7 +229,7 @@ test.describe('dredging rights', () => {
     });
     const before = await page.evaluate(() => window.SILT.state().players[0].coins);
     await page.evaluate(() => window.SILT.program('survey', 'survey'));
-    await page.evaluate(() => window.SILT.commit());
+    await commitAndClear(page);
     const after = await page.evaluate(() => window.SILT.state().players[0].coins);
     // survey alone pays 3+3; anything above that is toll income from the bots
     expect(after).toBeGreaterThan(before + 6);
@@ -228,7 +244,7 @@ test.describe('dredging rights', () => {
       return key;
     });
     await page.evaluate(() => window.SILT.program('survey', 'survey'));
-    await page.evaluate(() => window.SILT.commit());
+    await commitAndClear(page);
     const st = await page.evaluate((key) => {
       const g = window.SILT.state();
       return { depth: g.depth[key], rights: g.rights[key] };
@@ -264,14 +280,14 @@ test.describe('round flow', () => {
     await boot(page);
     await expect(page.locator('#rd')).toHaveText('Round 1 / 8');
     await page.evaluate(() => window.SILT.program('survey', 'survey'));
-    await page.evaluate(() => window.SILT.commit());
+    await commitAndClear(page);
     await expect(page.locator('#rd')).toHaveText('Round 2 / 8');
   });
 
   test('clears the program between rounds', async ({ page }) => {
     await boot(page);
     await page.evaluate(() => window.SILT.program('survey', 'survey'));
-    await page.evaluate(() => window.SILT.commit());
+    await commitAndClear(page);
     await expect(page.locator('#s0 .a')).toHaveText('—');
     await expect(page.locator('#s1 .a')).toHaveText('—');
     await expect(page.locator('#go')).toBeDisabled();
@@ -280,7 +296,7 @@ test.describe('round flow', () => {
   test('writes to the log', async ({ page }) => {
     await boot(page);
     await page.evaluate(() => window.SILT.program('survey', 'survey'));
-    await page.evaluate(() => window.SILT.commit());
+    await commitAndClear(page);
     await expect(page.locator('#log div')).not.toHaveCount(0);
     await expect(page.locator('#log')).toContainText('surveys');
   });
@@ -319,8 +335,12 @@ test.describe('full game', () => {
     await playFullGame(page);
     const rows = await page.locator('#final tr').evaluateAll(trs =>
       trs.slice(1).map(tr => [...tr.querySelectorAll('td')].slice(1).map(td => +td.textContent)));
-    for (const [c, m, n, held, coin, silt, total] of rows) {
-      expect(c + m + n + held + coin + silt).toBe(total);
+    // Columns: contracts, bay majority, sites, channels held, network bonus,
+    // coins, silt penalty — then total. The parts must sum to the total.
+    for (const r of rows) {
+      const total = r[r.length - 1];
+      const parts = r.slice(0, -1).reduce((s, v) => s + v, 0);
+      expect(parts).toBe(total);
     }
   });
 
@@ -461,14 +481,21 @@ test.describe('the final score explains itself', () => {
       if (await page.locator('#ov').evaluate(e => e.classList.contains('on'))) break;
       await page.evaluate(() => window.SILT.program('survey', 'survey'));
       await page.evaluate(() => window.SILT.commit());
+      // Survey now opens a keep-1-of-3 picker; autoResolve keeps the best and
+      // lets the round finish, the same way it clears a ship/build target prompt.
+      for (let i = 0; i < 4; i++) {
+        if (!await page.evaluate(() => window.SILT.pending())) break;
+        await page.evaluate(() => window.SILT.autoResolve());
+      }
     }
     await expect(page.locator('#ov')).toHaveClass(/on/);
   };
 
   test('every scoring column says where its number came from', async ({ page }) => {
     await playOut(page);
-    // Player and Total are self-evident; the six scoring columns are not.
-    await expect(page.locator('#final th.hasTip')).toHaveCount(6);
+    // Player and Total are self-evident; the seven scoring columns are not —
+    // contracts, bay majority, sites, channels held, network, coins, penalty.
+    await expect(page.locator('#final th.hasTip')).toHaveCount(7);
     for (const th of await page.locator('#final th.hasTip').all()) {
       expect((await th.getAttribute('data-tip'))?.length ?? 0).toBeGreaterThan(20);
     }
@@ -548,6 +575,11 @@ test.describe('bay majority is visible during the game', () => {
     for (let r = 0; r < n; r++) {
       await page.evaluate(() => window.SILT.program('survey', 'survey'));
       await page.evaluate(() => window.SILT.commit());
+      // Clear the survey keep-1 picker (and any other prompt) so the round ends.
+      for (let i = 0; i < 4; i++) {
+        if (!await page.evaluate(() => window.SILT.pending())) break;
+        await page.evaluate(() => window.SILT.autoResolve());
+      }
     }
   };
 
@@ -656,5 +688,51 @@ test.describe('shipping lets you choose the route', () => {
     });
     expect(mouths.length, 'derived the real bay list').toBeGreaterThan(0);
     for (const d of dests) expect(mouths).toContain(d);
+  });
+});
+
+// The "keep 1 of 3" that IS Survey used to happen with no player input — the
+// engine silently kept the highest-VP card, so +gold looked like the only
+// effect. Now you pick, in the sidebar, with the board and your hand in view.
+test.describe('Survey lets you keep the contract you want', () => {
+  const survey = async (page) => {
+    await page.goto('/index.html');
+    await page.evaluate(() => window.SILT.ready);
+    await page.evaluate(() => { window.SILT.setSpeed('off'); window.SILT.setTheme('silt'); });
+    await page.evaluate(() => window.SILT.boot(3));
+    await page.evaluate(() => window.SILT.program('survey', 'build'));
+    await page.evaluate(() => window.SILT.commit());
+  };
+
+  test('drawing three contracts shows a picker, not a silent keep', async ({ page }) => {
+    await survey(page);
+    await expect(page.locator('#survey.on')).toBeVisible();
+    await expect(page.locator('.surveyCard')).toHaveCount(3);
+    // The board is NOT covered — you choose with it in view.
+    await expect(page.locator('#svg')).toBeVisible();
+  });
+
+  test('the card you click is the one added, not the highest-VP default', async ({ page }) => {
+    await survey(page);
+    // Deliberately pick the LOWEST-value card, so a passing test proves the
+    // player's choice was honoured rather than the old keep-best default.
+    const vps = await page.locator('.surveyCard .vp').allTextContents();
+    const nums = vps.map(Number);
+    const lowIdx = nums.indexOf(Math.min(...nums));
+    const before = await page.evaluate(() =>
+      window.SILT.state().players[0].contracts.length);
+
+    await page.locator('.surveyCard').nth(lowIdx).click();
+    await expect(page.locator('#survey')).toBeHidden();
+
+    const kept = await page.evaluate(() => {
+      const cs = window.SILT.state().players[0].contracts;
+      return Math.round(cs[cs.length - 1].vp * window.SILT.tuning.contractScale);
+    });
+    const after = await page.evaluate(() =>
+      window.SILT.state().players[0].contracts.length);
+    expect(after, 'the kept contract joins the hand').toBe(before + 1);
+    expect(kept, 'the LOW card was kept — the choice was honoured')
+      .toBe(Math.min(...nums));
   });
 });

@@ -511,6 +511,40 @@
   #ov{position:absolute;inset:0;background:color-mix(in srgb,var(--bg) 94%,transparent);display:none;
     align-items:center;justify-content:center;z-index:20}
   #ov.on{display:flex}
+  /* Survey picker — lives in the sidebar above the contract hand, board stays
+     visible so you choose in context. Not a modal: the choice depends on where
+     your settlements are and which bays you can reach, which a dimmed board
+     would hide. A gold frame + gentle pulse mark it as the thing to act on. */
+  #survey{display:none;margin-bottom:12px}
+  #survey.on{display:block;animation:surveyIn .18s ease-out}
+  @keyframes surveyIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  .surveyHead{font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--gold);font-weight:600;margin-bottom:8px;
+    display:flex;align-items:center;gap:6px}
+  .surveyHead::before{content:'▸';color:var(--gold)}
+  .surveyCards{display:flex;flex-direction:column;gap:7px;
+    padding:9px;border:1px solid var(--gold);border-radius:9px;
+    background:color-mix(in srgb,var(--panel) 82%,var(--gold) 8%);
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 14%,transparent)}
+  .surveyCard{position:relative;isolation:isolate;overflow:hidden;
+    display:flex;gap:9px;align-items:flex-start;padding:9px 10px;
+    border:1px solid #6b5c3f;border-radius:7px;background:#3a2f22;cursor:pointer;
+    color:var(--ink);font:inherit;text-align:left;transition:transform .1s,border-color .1s;
+    box-shadow:0 2px 0 rgba(20,16,10,.4)}
+  .surveyCard::before{content:'';position:absolute;inset:0;z-index:-1;
+    background:url('./assets/art/mat-leather.png') center/150px;
+    opacity:.5;filter:brightness(.62) saturate(.9)}
+  .surveyCard:hover{border-color:var(--gold);transform:translateX(2px)}
+  .surveyCard .vp{color:var(--gold);font-weight:700;font-size:16px;flex:none;
+    font-variant-numeric:tabular-nums;min-width:26px;text-align:center}
+  .surveyCard .cbody{font-size:12px;line-height:1.45;color:var(--dim)}
+  .surveyCard .cbody b{color:var(--ink)}
+  .surveySkip{margin-top:8px;width:100%;padding:6px;border:1px solid var(--line2);
+    border-radius:6px;background:rgba(18,14,9,.3);color:var(--dim);font:inherit;
+    font-size:11px;cursor:pointer;transition:.12s}
+  .surveySkip:hover{border-color:var(--gold);color:var(--ink)}
+  .surveySkip kbd{font-family:inherit;font-size:9.5px;opacity:.7;
+    border:1px solid currentColor;border-radius:3px;padding:0 3px;margin-left:4px}
   .card{background:var(--panel);border:1px solid var(--line2);border-radius:10px;
     padding:24px 28px;min-width:430px;max-width:90%}
   .card h2{margin:0 0 15px;font-size:16px;letter-spacing:.12em;text-transform:uppercase}
@@ -919,6 +953,9 @@
         <h3 id="hContracts">Contracts</h3>
         <span class="count" id="ctCount"></span>
       </div>
+      <!-- Survey picker drops in here, above the hand, so you choose which of the
+           three drawn contracts to keep with the board and your hand in view. -->
+      <div id="survey"></div>
       <div id="cts"></div>
     </div>
 
