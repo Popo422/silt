@@ -2,7 +2,7 @@ import { NODE_BY_ID } from './graph.js';
 import {
   newGame, execute, siltPhase, bayBonusPhase, regrowPhase, upkeepPhase, score, seatOrder,
   buildTargets, dredgeTargets, shipOptions, buildCost, buildStepCost, surveyDrawnFor, TUNING,
-} from './engine.js';
+  totalRounds, seasonOf } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
 import { setSearchOptions } from './mcts.js';   // registers the `mcts` search strategy + lets us cap its per-move think time
 import { createTutorial, stepText } from './tutorial.js';
@@ -122,8 +122,7 @@ const artImage = (name, x, y, size) => el('image', {
 // ---------------------------------------------------------------- menu
 
 function buildMenu() {
-  // Every opponent is the clever search bot by default (ladder bots stay in the dropdown for an easier game).
-  config = { players: 3, rounds: 8, bots: ['mcts', 'mcts', 'mcts'] };
+  config = { players: 3, rounds: 8, bots: ['mcts', 'mcts', 'mcts'] };   // default: all mcts (ladder bots still selectable)
 
   const syncBots = () => {
     const n = config.players - 1;
@@ -417,7 +416,7 @@ function render() {
     shipRoutes: shipFrom ? shipOptions(g, g.players[HUMAN]).filter(o => o.from === shipFrom) : null,
     artImage, ico, nodeLabel, ART,
   });
-  $('rd').textContent = `${T.terms.round.name} ${g.round} / ${TUNING.rounds}`;
+  $('rd').textContent = `${T.terms.round.name} ${g.round} / ${totalRounds()}`;
   $('ph').textContent = pendingAction
     ? (T.id === 'anod' ? 'Pumili' : 'Choose a target')
     : (T.id === 'anod' ? 'Magplano' : 'Program');
@@ -504,7 +503,7 @@ function renderTutorial() {
   // Watch mode paints the same box with transport controls instead of steps.
   if (demo?.active) {
     paintCaption(box, demo, {
-      T, round: Math.min(g.round, TUNING.rounds), rounds: TUNING.rounds,
+      T, round: Math.min(g.round, totalRounds()), rounds: totalRounds(),
       speedLabel: SPEED_LABEL[speed], el: $,
       speech: { available: speech.available, enabled: speech.enabled },
     });
@@ -989,8 +988,9 @@ async function endRound() {
   roundsPlayed++;
   await flush();
   pollTutorial();
-  if (g.round >= TUNING.rounds) return finish();
+  if (g.round >= totalRounds()) return finish();
   g.round++;
+  g.season = seasonOf(g.round);
   // NOTE: committedThisRound deliberately stays true here. The programs remain
   // face-up while you plan the next round, because "what did everyone just do"
   // is the main input to that decision. It flips back to false on the next

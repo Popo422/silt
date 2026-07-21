@@ -15,6 +15,7 @@
 import {
   execute, siltPhase, bayBonusPhase, regrowPhase, upkeepPhase, seatOrder, score,
   shipOptions, buildTargets, buildCost, buildStepCost, dredgeTargets, TUNING,
+  totalRounds, seasonOf,
 } from './engine.js';
 import { STRATEGIES, chooseTarget, registerMcts } from './ai.js';
 import { chKey } from './graph.js';
@@ -45,7 +46,7 @@ function cloneGame(g) {
     return o;
   };
   return {
-    round: g.round, phase: g.phase, slot: g.slot,
+    round: g.round, phase: g.phase, slot: g.slot, season: g.season,
     firstPlayer: g.firstPlayer, draftOrder: g.draftOrder,
     depth: { ...g.depth }, rights: { ...g.rights }, mostRecent: { ...g.mostRecent },
     markers: Object.fromEntries(Object.entries(g.markers).map(([k, v]) => [k, { ...v }])),
@@ -191,8 +192,12 @@ function playoutRestOfTurn(g, me, turn, rand) {
     }
   }
   endRound(g);
-  // Play remaining rounds with heuristic policies for all seats.
-  for (g.round = g.round + 1; g.round <= TUNING.rounds; g.round++) {
+  // Play remaining rounds with heuristic policies for all seats. Uses totalRounds()
+  // and refreshes g.season each round exactly like the real loops, so a rollout that
+  // crosses the Amihan->Habagat turn evaluates the wet season correctly (once later
+  // phases give it distinct rules) instead of stopping short at the old 8-round mark.
+  for (g.round = g.round + 1; g.round <= totalRounds(); g.round++) {
+    g.season = seasonOf(g.round);
     for (const p of g.players) p.program = normalizeProg(rolloutPolicy(g, p, rand));
     for (let slot = 0; slot < 2; slot++) {
       const claimed = new Set();

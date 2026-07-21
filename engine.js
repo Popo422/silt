@@ -3,6 +3,13 @@ import { NODES, CHANNELS, MOUTHS, GOODS, buildIndex, chKey, NODE_BY_ID } from '.
 
 export const TUNING = {
   rounds: 8,
+  // --- Two-season (Taon) scaffolding — Phase 0 -----------------------------
+  // A Taon (year) splits into Amihan (dry, one-way silt) then Habagat (wet, refill +
+  // cascade + bagyo). Phase 0 adds ONLY the plumbing: with `seasons` off, seasonOf()
+  // always returns 'amihan', totalRounds() stays `rounds`, and play is byte-identical
+  // to today. Each later phase turns on one behaviour behind its own flag.
+  seasons: false,           // master switch for the two-season game
+  roundsPerSeason: 6,       // 6 + 6 = 12 total when seasons on (see totalRounds)
   startCoins: 8,
   cubesPerNode: 4,          // was 3 — board went dry by R5
   regrowPerRound: 1,        // one upstream node refills each round
@@ -84,6 +91,28 @@ export const TUNING = {
 };
 
 export const ACTIONS = ['dredge', 'build', 'ship', 'survey'];
+
+// --- Season plumbing (Phase 0) -------------------------------------------
+// Total rounds in a game. With seasons off this is exactly `rounds` (today's game);
+// with seasons on it is two halves of `roundsPerSeason`. Callers use this instead of
+// reading TUNING.rounds directly so turning seasons on lengthens the game in one place.
+export function totalRounds() {
+  return TUNING.seasons ? TUNING.roundsPerSeason * 2 : TUNING.rounds;
+}
+
+// Which season a given 1-indexed round falls in. Off → always 'amihan' (so every
+// season-gated rule is a no-op until its phase turns it on). On → first half Amihan
+// (dry), second half Habagat (wet).
+export function seasonOf(round) {
+  if (!TUNING.seasons) return 'amihan';
+  return round <= TUNING.roundsPerSeason ? 'amihan' : 'habagat';
+}
+
+// True on the round where Amihan hands over to Habagat — the transition beat Phase 1
+// will hook (refill the channels, keep balangay + claims). Never true with seasons off.
+export function isSeasonTurn(round) {
+  return TUNING.seasons && round === TUNING.roundsPerSeason + 1;
+}
 
 // Values raised: contracts must be ~45% of a winning score, not 22%.
 const CONTRACT_POOL = [
@@ -197,6 +226,10 @@ export function newGame(playerCount = 3, seed = 12345) {
 
   return {
     round: 1, phase: 'program', slot: 0, firstPlayer, draftOrder,
+    // Current season, derived from round via seasonOf(). Kept as a field (not computed
+    // on every read) so the UI and the MCTS clone carry it cheaply; the round loop
+    // refreshes it each round. 'amihan' always, until seasons are switched on.
+    season: seasonOf(1),
     depth, rights, markers, mostRecent, cubes, players, deck, out, inn,
     log: [], events: [], shippedThisRound: new Set(), seed, rand,
     // bayThisRound counts cargo delivered to each bay this round, to find the most
