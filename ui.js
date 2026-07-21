@@ -1056,6 +1056,7 @@ window.SILT = {
   demoStop: stopDemo,
   tutNext: () => { tut?.next(); render(); },
   score: () => score(g),
+  render: () => render(),   // force a repaint (tests poke g then re-render to check the board)
   seed: () => seed,
   theme: () => T,
   themeId: () => T.id,

@@ -294,10 +294,13 @@ export function drawBoard(ctx) {
 
   // Tanáw forecast (Phase 3): channels the last Survey projected to die get a warning
   // glyph, so a player who read the water can see which lifelines to dredge or route
-  // around. Shown for the round it predicted AND the next one (that is when you act on
-  // it) — but not a stale read from further back, which would just flash noise.
+  // around. Only YOUR reading shows — a bot's Survey is its own private forecast and
+  // must not light up your board (that looked like channels glowing for no reason). And
+  // only while it is current: the round it predicted and the next (when you act on it),
+  // never a stale read from further back.
+  const fcAge = g.forecast ? g.round - g.forecast.round : Infinity;
   const forecastCrit = new Set(
-    g.forecast && g.round - g.forecast.round >= 0 && g.round - g.forecast.round <= 1
+    g.forecast && g.forecast.by === HUMAN && fcAge >= 0 && fcAge <= 1
       ? g.forecast.critical : [],
   );
 
