@@ -97,7 +97,11 @@ Still TODO in this phase (polish, not blocking):
 - **Reckoning** stays parked/off per the locked decisions.
 
 **Checkpoint:** ✅ transition feels like relief-then-opportunity (verified numerically).
-MCTS-still-dominant re-sim: running.
+✅ MCTS re-sim: seasons OFF mcts 75% vs 2bal; seasons ON mcts **100%** vs 2bal, **90%**
+vs smart. The two-season game is DEEPER, not shallower — the ladder bots play the wet
+season like the dry one and get crushed, the search bot plans across the transition.
+Note: 100% vs the ladder means those bots are no longer a useful seasons-mode
+benchmark; mcts-vs-mcts becomes the real balance test once seasons are default.
 
 ## Phase 2 — Cascading Anód  *(the intensity core)*
 
