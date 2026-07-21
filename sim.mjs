@@ -1,8 +1,8 @@
 // SILT — headless simulator. Answers the balance questions with numbers.
-import { newGame, execute, siltPhase, floodPhase, bagyoPhase, bayBonusPhase, regrowPhase, upkeepPhase, score, seatOrder, totalRounds, seasonOf } from './engine.js';
+import { newGame, execute, siltPhase, floodPhase, bagyoPhase, bayBonusPhase, regrowPhase, upkeepPhase, score, seatOrder, totalRounds, seasonOf, canReachMouth } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
 import './mcts.js';   // side effect: registers the `mcts` search strategy with ai.js
-import { CHANNELS } from './graph.js';
+import { CHANNELS, MOUTHS } from './graph.js';
 
 export function playGame(strats, seed) {
   const g = newGame(strats.length, seed);
@@ -41,7 +41,32 @@ export function playGame(strats, seed) {
   for (const e of g.events ?? []) {
     if (e.type === 'fizzle' || e.type === 'blocked') waste[e.pi] += 1;
   }
-  return { scores: score(g), silted, cubesLeft, filled, waste, g };
+  // Bay reachability at game end — the metric that catches the cascade/bagyo failure
+  // the braided map guards against. `liveStations` = players with at least one station
+  // that can still reach the sea; `deadPlayers` = players fully cut off (a real loss of
+  // agency, not just a low score). `baysOpen` = how many of the 3 bays anyone can reach.
+  const liveStations = g.players.filter(p =>
+    p.stations.some(s => canReachMouth(g, s, 1))).length;
+  const deadPlayers = g.players.length - liveStations;
+  const baysOpen = MOUTHS.filter(m =>
+    g.players.some(p => p.stations.some(s => canReachMouth(g, s, 1) && reachesBay(g, s, m)))).length;
+  return { scores: score(g), silted, cubesLeft, filled, waste, deadPlayers, baysOpen, g };
+}
+
+// Can station `from` reach a specific bay `m` over living water? (canReachMouth only
+// answers "any bay"; the balance sweep needs per-bay, to see if the bagyo/cascade
+// strands a whole region.)
+function reachesBay(g, from, m) {
+  const seen = new Set([from]), stack = [from];
+  while (stack.length) {
+    const id = stack.pop();
+    if (id === m) return true;
+    for (const n of g.out[id]) {
+      const k = `${id}>${n}`;
+      if (g.depth[k] >= 1 && !seen.has(n)) { seen.add(n); stack.push(n); }
+    }
+  }
+  return false;
 }
 
 function stats(xs) {
