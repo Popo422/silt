@@ -134,8 +134,13 @@ flood-surge animation on the transition. The `flood`/cascade fx currently fall t
 to the no-op default.
 
 **Checkpoint:** ✅ one ship visibly silts a channel downstream you never touched — the
-second half is now political. Sim guardrail (silted count, bay reachability, MCTS win%
-with cascade on): PENDING — run before Phase 3.
+second half is now political. ✅ Sim guardrail: MCTS holds at **90%** with cascade on
+(unchanged from off), so the rule didn't make the game shallower. Silting rises 10.4 →
+**16.6 / 37** — the intended harsher wet season.
+⚠️ **Watch-point for Phase 5:** 16.6/37 (~45% dead) approaches the bay-stranding failure
+the braided map guards against. Not broken (bot completes + wins; flood revive offsets
+some), but if playtests strand bays, turn `cascadeDrop` (1) down. Tuning item, not a
+blocker.
 
 ## Phase 3 — Tanáw forecasts  *(the legitimizer)*
 
