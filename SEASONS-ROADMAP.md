@@ -208,16 +208,37 @@ storm banner counts down, landfall tears up bay C's approach (screenshotted).
 strike) and is survivable if you read the forecast and route/cash around it. Full
 sim + MCTS re-verify: PENDING.
 
-## Phase 5 — Re-balance & bot hardening  *(make it stick)*
+## Phase 5 — Re-balance & bot hardening  *(make it stick)*  ✅ DONE (with a pivot)
 
 **Goal:** tune the whole two-season arc as one system; confirm the bot is still sharp.
 
-- Sweep the new `TUNING` knobs (season length, cascade fraction, bagyo severity,
-  forecast depth) with `sweep.mjs`.
-- Re-run the full tournament; ensure MCTS wins ~70%+ across matchups WITH seasons on.
-- Update `ARCHITECTURE.md` / `rulebook.js` so the printed rules match the engine.
+**What the balance sweeps found — the pivot.** A new metric (bay reachability from the
+source, added to sim.mjs) exposed a death spiral the per-phase "does MCTS still win?"
+guardrails had missed: over 16 rounds, cascade + bagyo silt the 37-channel map to death
+— ~2 of 3 players end CUT OFF from the sea, <1 of 3 bays reachable. No knob fixed it,
+because the map is simply too small to absorb 16 rounds of that intensity. (Win-rate was
+the wrong guardrail: a search bot winning a broken game is just the least-stranded of
+three stranded players.)
 
-**Checkpoint:** seasons on by default; bot still hard; rules doc accurate.
+**The resolution (user-directed).** Ship the two-season game as the user actually framed
+it: **two normal 8-round games joined by a flood that fully refills the delta between
+them.** No cascade, no bagyo. This measures as healthy as the base single-season game:
+- vs ladder: dead 0.14, ~1.9/3 bays (same as the base game's 1.95), spread ~15
+- mcts mirror (equal skill): **spread 27, dead 0.00, bays 2.42** — fair, nobody stranded
+
+**Shipped config (defaults):** `seasons: true`, `roundsPerSeason: 8` (16 total),
+`floodFull: true` (whole delta to max at the turn), `cascadeAnod: false`, `bagyo: false`.
+Cascade, bagyo, and forecasts remain fully built + tested behind their flags for a
+bigger map or a shorter high-intensity variant later.
+
+- Rules: `rulebook.js` reads `totalRounds()`, new "The Two Seasons" page, flood noted in
+  the round phases (all gated on `TUNING.seasons`).
+- Demo: `narration.js` retimed for 16 rounds + a flood beat at round 9; watch mode runs
+  the real two-season game.
+
+**Checkpoint:** ✅ seasons on by default; map healthy; equal-skill game fair; rules +
+demo teach it. Remaining polish (non-blocking): flood/rain fx animation exists; a
+dedicated flood visual sweep could be added; `ARCHITECTURE.md` could note the seasons.
 
 ---
 
