@@ -369,6 +369,10 @@
   header .t{flex:1}
   header h2{margin:0;font-size:14px;letter-spacing:.16em;text-transform:uppercase;font-weight:600}
   header .sub{color:var(--dim);font-size:12px;margin-top:2px}
+  /* Season banner tag: the current half (Amihan/Habagat) with its icon. Hidden in
+     the single-season game via .hide. Habagat gets a teal tint, Amihan a warm one. */
+  .seasonTag{display:inline-flex;align-items:center;gap:4px;font-weight:600;letter-spacing:.04em}
+  .seasonTag .seasonIco{width:14px;height:14px;object-fit:contain;vertical-align:middle}
   /* Desktop: the three buttons sit inline; the hamburger and its menu are hidden. */
   .hdrBtns{display:flex;gap:8px}
   .hdrMenuBtn,.hdrMenu{display:none}
@@ -1163,7 +1167,7 @@
       <svg><use href="#ic-river" data-logo/></svg>
       <div class="t">
         <h2 id="hTitle">ANOD</h2>
-        <div class="sub"><span id="rd">Round 1 / 8</span> · <span id="ph">Program</span></div>
+        <div class="sub"><span id="rd">Round 1 / 8</span> · <span id="ph">Program</span><span id="seasonTag" class="seasonTag hide"></span></div>
       </div>
       <!-- Desktop: three inline buttons. Mobile: they collapse into the hamburger
            below, so the round counter can sit right next to the title. -->

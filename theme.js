@@ -215,6 +215,13 @@ export function applyTheme(t) {
     ? 'ANOD — a river delta game' : 'SILT — a river delta game';
 }
 
+// Season display label for the banner: the half's name, themed. Pure — no DOM.
+export function seasonLabel(t, season) {
+  const wet = season === 'habagat';
+  if (t.id === 'anod') return wet ? 'Habagat' : 'Amihan';
+  return wet ? 'Habagat — wet' : 'Amihan — dry';
+}
+
 // Node label for the board.
 export const nodeLabel = (t, id) => t.short?.[id] ?? id;
 // Full name for tooltips / log.

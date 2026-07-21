@@ -4,6 +4,7 @@ import {
   score, totalRounds, seasonOf, isSeasonTurn, TUNING,
 } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
+import { chKey } from './graph.js';
 // Importing setSearchOptions also runs mcts.js for its side effect (registering the
 // `mcts` strategy with ai.js), so the integration game below can use the search bot.
 import { setSearchOptions } from './mcts.js';
@@ -409,6 +410,125 @@ describe('season plumbing (Phase 0)', () => {
       }
       expect(before).not.toBeNull();
       expect(after).toBeGreaterThan(before);   // the rains actually raised the water
+    });
+  });
+
+  // Phase 2 — Cascading Anód. In Habagat, a channel that silts drags its DOWNSTREAM
+  // neighbours down one hop, as a single non-recursive wave. These pin the season
+  // gate, the direction (downstream only), the no-avalanche cap, and the political
+  // consequence (someone else's ship can silt YOUR channel).
+  describe('cascading anod (Phase 2)', () => {
+    const KEYS = ['seasons', 'roundsPerSeason', 'rounds', 'cascadeAnod', 'cascadeDrop', 'siltPerShip'];
+    let saved;
+    const snap = () => { saved = Object.fromEntries(KEYS.map(k => [k, TUNING[k]])); };
+    afterEach(() => { if (saved) for (const k of KEYS) TUNING[k] = saved[k]; });
+
+    // Ship a single channel `k` in the given season and return the silt event.
+    const siltAfterShipping = (k, round, season) => {
+      const g = newGame(3, 5);
+      g.round = round; g.season = season;
+      g.shippedThisRound = new Set([k]);
+      g.events = [];
+      siltPhase(g);
+      return { g, ev: g.events.find(e => e.type === 'silt') };
+    };
+    // A non-mouth channel with at least one downstream channel, for cascade tests.
+    const upstreamKey = () => {
+      const g = newGame(3, 5);
+      return Object.keys(g.depth).find(k => {
+        const mid = k.split('>')[1];
+        return (g.out[mid] ?? []).length > 0;
+      });
+    };
+
+    it('does NOT cascade in Amihan', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.cascadeAnod = true;
+      const { ev } = siltAfterShipping(upstreamKey(), 3, 'amihan');
+      expect(ev.cascade).toBe(0);
+      expect(ev.dropped.every(d => d.cause === 'ship')).toBe(true);
+    });
+
+    it('does NOT cascade when the flag is off, even in Habagat', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.cascadeAnod = false;
+      const { ev } = siltAfterShipping(upstreamKey(), 8, 'habagat');
+      expect(ev.cascade).toBe(0);
+    });
+
+    it('cascades one hop downstream in Habagat', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.cascadeAnod = true;
+      const k = upstreamKey();
+      const { g, ev } = siltAfterShipping(k, 8, 'habagat');
+      const mid = k.split('>')[1];
+      const expected = g.out[mid].map(x => chKey(mid, x));
+      const cascadedChannels = ev.dropped.filter(d => d.cause === 'cascade').map(d => d.channel);
+      expect(ev.cascade).toBe(expected.length);
+      expect(cascadedChannels.sort()).toEqual(expected.sort());
+    });
+
+    it('cascade only ever goes downstream, never back upstream', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.cascadeAnod = true;
+      const k = upstreamKey();
+      const [a] = k.split('>');
+      const { ev } = siltAfterShipping(k, 8, 'habagat');
+      // No cascaded channel may end at the shipped channel's SOURCE node (that would be
+      // upstream flow). Downstream channels start at the shipped channel's mid node.
+      for (const d of ev.dropped.filter(x => x.cause === 'cascade')) {
+        expect(d.channel.split('>')[1]).not.toBe(a);
+      }
+    });
+
+    it('is a single wave — a channel is caught by the cascade at most once', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.cascadeAnod = true;
+      // Ship EVERY channel at once: even with maximal overlap, no channel may appear
+      // twice in the dropped list (no avalanche / double-counting).
+      const g = newGame(3, 5);
+      g.round = 8; g.season = 'habagat';
+      g.shippedThisRound = new Set(Object.keys(g.depth));
+      g.events = [];
+      siltPhase(g);
+      const ev = g.events.find(e => e.type === 'silt');
+      const channels = ev.dropped.map(d => d.channel);
+      expect(new Set(channels).size).toBe(channels.length);
+    });
+
+    it('a cascade silts a channel the player never shipped through (the political bite)', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6;
+      TUNING.cascadeAnod = true; TUNING.cascadeDrop = 1;
+      const k = upstreamKey();
+      const { g, ev } = siltAfterShipping(k, 8, 'habagat');
+      const mid = k.split('>')[1];
+      const downstream = chKey(mid, g.out[mid][0]);
+      // The bite: only `k` was shipped, yet a DIFFERENT channel downstream lost depth
+      // — purely from the cascade, not from anyone routing through it.
+      expect(downstream).not.toBe(k);
+      const hit = ev.dropped.find(d => d.channel === downstream && d.cause === 'cascade');
+      expect(hit).toBeTruthy();
+      expect(hit.to).toBeLessThan(hit.from);
+    });
+
+    it('a cascade can kill a shallow downstream channel (depth 1 -> 0), clearing its claim', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6;
+      TUNING.cascadeAnod = true; TUNING.cascadeDrop = 1;
+      const g = newGame(3, 5);
+      g.round = 8; g.season = 'habagat';
+      const k = Object.keys(g.depth).find(key => (g.out[key.split('>')[1]] ?? []).length > 0);
+      const mid = k.split('>')[1];
+      const dk = chKey(mid, g.out[mid][0]);
+      g.depth[dk] = 1;                              // one hit from death
+      g.rights[dk] = 2; g.markers[dk] = { 2: 1 };  // owned — must be cleared on death
+      g.shippedThisRound = new Set([k]);
+      g.events = [];
+      siltPhase(g);
+      expect(g.depth[dk]).toBe(0);
+      expect(g.rights[dk]).toBeNull();
+      expect(g.markers[dk]).toEqual({});
     });
   });
 });

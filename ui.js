@@ -7,7 +7,7 @@ import { STRATEGIES, chooseTarget } from './ai.js';
 import { setSearchOptions } from './mcts.js';   // registers the `mcts` search strategy + lets us cap its per-move think time
 import { createTutorial, stepText } from './tutorial.js';
 import { createDemo, paintCaption, wireDemo, DEMO_SEED, DEMO_BOTS } from './demo.js';
-import { THEMES, applyTheme, nodeLabel, glossaryHTML } from './theme.js';
+import { THEMES, applyTheme, nodeLabel, glossaryHTML, seasonLabel } from './theme.js';
 import { pages, createRulebook } from './rulebook.js';
 import { createFX } from './fx.js';
 import { createPanZoom } from './panzoom.js';
@@ -242,6 +242,19 @@ function paintGlossary() {
   if (html) el2.innerHTML = html;
 }
 
+// The season banner. Hidden entirely in the single-season game; with seasons on it
+// names the current half (Amihan dry / Habagat wet) beside its icon, so the player
+// always knows which game they are in — and, in Habagat, that silt now cascades.
+function paintSeasonBanner() {
+  const tag = $('seasonTag');
+  if (!tag) return;
+  if (!TUNING.seasons || !g) { tag.classList.add('hide'); return; }
+  const wet = g.season === 'habagat';
+  tag.classList.remove('hide');
+  tag.innerHTML = ` · ${icon(wet ? 'season-habagat' : 'season-amihan', 'seasonIco')}`
+    + seasonLabel(T, g.season);
+}
+
 // ---------------------------------------------------------------- rulebook
 
 function renderBook() {
@@ -398,6 +411,7 @@ function render() {
     artImage, ico, nodeLabel, ART,
   });
   $('rd').textContent = `${T.terms.round.name} ${g.round} / ${totalRounds()}`;
+  paintSeasonBanner();
   $('ph').textContent = pendingAction
     ? (T.id === 'anod' ? 'Pumili' : 'Choose a target')
     : (T.id === 'anod' ? 'Magplano' : 'Program');

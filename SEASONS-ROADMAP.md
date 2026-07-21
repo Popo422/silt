@@ -103,18 +103,39 @@ season like the dry one and get crushed, the search bot plans across the transit
 Note: 100% vs the ladder means those bots are no longer a useful seasons-mode
 benchmark; mcts-vs-mcts becomes the real balance test once seasons are default.
 
-## Phase 2 — Cascading Anód  *(the intensity core)*
+## Phase 2 — Cascading Anód  *(the intensity core)*  ✅ CORE DONE
 
 **Goal:** make the game's namesake literal in the wet season.
 
-- In Habagat only: when a channel silts (in `siltPhase`), push part of the loss to the
-  next downstream channel — a cascade, capped so it can't chain infinitely.
-- This replaces "Baha double-silt" — one silt rule, turned up in the wet.
-- Balance risk: cascades can strand bays. Tune cascade fraction + cap; watch the
-  "dead channels / boxed-out bay" rate the braided map was built to keep low.
+Shipped:
+- In `siltPhase`, Habagat-only: after the primary silting, each channel that dropped
+  drags its DOWNSTREAM neighbours down by `TUNING.cascadeDrop`. Single non-recursive
+  wave — a `cascaded` set caps each channel to one hit per sweep, so no avalanche.
+  Dropped entries carry a `cause` ('ship' | 'cascade'); the silt event carries a
+  `cascade` count. Cleared claims on a cascade-killed channel, same as a normal death.
+- Gated behind `TUNING.cascadeAnod` (+ seasons + habagat). No effect in Amihan or with
+  the flag off, verified.
+- 7 cascade tests: no-cascade in Amihan / flag-off, one-hop downstream, downstream-only
+  (never upstream), single-wave cap, the political bite (silts a channel you never
+  shipped), and cascade-kills-and-clears-claim. 152 total green.
 
-**Checkpoint:** does one bad upstream shipment visibly hurt a rival downstream? Is the
-second half now *political*? Sim: silted-channel count, bay reachability, MCTS win %.
+**Art (this phase):** generated 4 season assets via Together.ai/FLUX (`node
+gen-assets.mjs seasons`, ~$0.01): `season-amihan` (dry sun / cracked earth),
+`season-habagat` (monsoon rain / swollen sea), `flood-surge`, `anod-cascade` (brown
+silt bleeding into teal — literally the cascade). Promoted the pair into assets/art/,
+registered in art.js, and built a **season banner** in the header (icon + "Amihan —
+dry" / "Habagat — wet"), hidden in the single-season game. `seasonLabel()` extracted to
+theme.js (second ui.js split — back under the line cap). Verified live in the browser:
+banner renders with art, flood fires, zero page errors.
+
+Still TODO (polish, non-blocking): a distinct **cascade fx animation** (the silt event
+now carries `cause`/`cascade` so fx.js can tint cascade drops differently) and a
+flood-surge animation on the transition. The `flood`/cascade fx currently fall through
+to the no-op default.
+
+**Checkpoint:** ✅ one ship visibly silts a channel downstream you never touched — the
+second half is now political. Sim guardrail (silted count, bay reachability, MCTS win%
+with cascade on): PENDING — run before Phase 3.
 
 ## Phase 3 — Tanáw forecasts  *(the legitimizer)*
 

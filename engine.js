@@ -19,6 +19,15 @@ export const TUNING = {
   floodRefill: 2,           // depth added to each living channel at the season turn
   floodRevive: true,        // do dead (depth 0) channels get a chance to come back?
   floodReviveTo: 1,         // depth a revived channel returns at
+  // Phase 2 — Cascading Anód. In Habagat only, the moving flood carries sediment
+  // downstream: when a channel silts, the loss spills one hop toward the sea. Modelled
+  // as a single, non-recursive wave — each channel that lost depth this sweep drags its
+  // downstream neighbours down by `cascadeDrop`, but a channel can be caught by the
+  // cascade at most once per sweep (no chain reactions, no infinite loops). This is
+  // what makes the wet season political: your shipping silts YOUR channel, and the
+  // silt then chokes whoever is downstream of you.
+  cascadeAnod: true,        // does silt cascade downstream in Habagat?
+  cascadeDrop: 1,           // depth a downstream channel loses from an upstream silting
   startCoins: 8,
   cubesPerNode: 4,          // was 3 — board went dry by R5
   regrowPerRound: 1,        // one upstream node refills each round
@@ -674,20 +683,42 @@ export function siltPhase(g) {
   // Collected rather than emitted one-by-one: the UI shows silting as a single
   // sweep across the whole delta, which is the moment the game is named for.
   const dropped = [], died = [];
+  // A small helper so the primary silting and the downstream cascade share one code
+  // path for lowering a channel and cleaning up a channel that just died.
+  const lower = (k, amount, cause) => {
+    const before = g.depth[k];
+    g.depth[k] = Math.max(0, g.depth[k] - amount);
+    dropped.push({ channel: k, from: before, to: g.depth[k], cause });
+    if (g.depth[k] === 0) { g.rights[k] = null; g.markers[k] = {}; g.mostRecent[k] = null; died.push(k); }
+  };
   for (const k of hit) {
-    if (g.depth[k] > 0) {
-      const before = g.depth[k];
-      g.depth[k] = Math.max(0, g.depth[k] - TUNING.siltPerShip); n++;
-      dropped.push({ channel: k, from: before, to: g.depth[k] });
-      // A dead channel is gone: nobody owns it, and the markers go with it, so
-      // re-dredging it later is a fresh contest rather than restoring old claims.
-      if (g.depth[k] === 0) { g.rights[k] = null; g.markers[k] = {}; g.mostRecent[k] = null; died.push(k); }
+    if (g.depth[k] > 0) { lower(k, TUNING.siltPerShip, 'ship'); n++; }
+  }
+  // Cascading Anód (Phase 2): in Habagat, the sediment stirred loose by this sweep
+  // rolls one hop downstream. Single non-recursive wave — the downstream targets are
+  // computed from the channels that just dropped, and each is lowered at most once, so
+  // it can't chain into an avalanche. `cascaded` guards the once-per-sweep cap.
+  let cascade = 0;
+  if (TUNING.cascadeAnod && seasonOf(g.round) === 'habagat') {
+    const cascaded = new Set(dropped.map(d => d.channel));   // don't re-hit a primary drop
+    const wave = dropped.filter(d => d.cause === 'ship').map(d => d.channel);
+    for (const k of wave) {
+      const mid = k.split('>')[1];                           // downstream node of this channel
+      for (const nx of (g.out[mid] ?? [])) {
+        const dk = chKey(mid, nx);
+        if (cascaded.has(dk) || g.depth[dk] <= 0) continue;
+        cascaded.add(dk);
+        lower(dk, TUNING.cascadeDrop, 'cascade');
+        cascade++;
+      }
     }
   }
-  g.log.push(`Silt settles — ${n} ${n === 1 ? "channel loses" : "channels lose"} depth`);
+  n += cascade;
+  g.log.push(`Silt settles — ${n} ${n === 1 ? "channel loses" : "channels lose"} depth`
+    + `${cascade ? ` (${cascade} carried downstream by the flood)` : ''}`);
   const gone = Object.entries(g.depth).filter(([, v]) => v === 0).length;
   if (gone) g.log.push(`  ${gone} ${gone === 1 ? "channel is" : "channels are"} now blocked for good`);
-  emit(g, 'silt', { dropped, died, total: gone });
+  emit(g, 'silt', { dropped, died, total: gone, cascade });
   g.shippedThisRound = new Set();
 }
 

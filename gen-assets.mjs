@@ -426,6 +426,28 @@ const BATCHES = {
       'silt-blocked':    ICON('a cracked dry riverbed, ochre and brown'),
     },
   },
+
+  // Two-season art (Amihan dry / Habagat wet). These sit in the season banner and
+  // the flood/cascade beats. Same flat two-tone ICON brief as the board icons so they
+  // read at small size and match the parchment palette. Judge at banner size on the
+  // contact sheet before promoting into assets/.
+  seasons: {
+    size: [768, 768],
+    prompts: {
+      // Amihan — the dry NE monsoon. A low sun and a dry wind over cracked ground.
+      'season-amihan':  ICON('a low sun over a dry cracked delta with a thin curling '
+        + 'wind line, calm and parched, ochre and gold'),
+      // Habagat — the wet SW monsoon. Heavy diagonal rain and a swollen river.
+      'season-habagat': ICON('heavy diagonal monsoon rain falling on a swollen river, '
+        + 'storm clouds and rising water, teal and grey'),
+      // The flood beat — water surging back up the channels.
+      'flood-surge':    ICON('a surge of water flooding up a braided river delta, '
+        + 'curved flow lines spreading outward, teal on cream'),
+      // Cascading Anod — sediment rolling downstream, the wet-season silt.
+      'anod-cascade':   ICON('plumes of brown silt drifting downstream through a river '
+        + 'channel, sediment clouds carried by the current, ochre and brown'),
+    },
+  },
 };
 
 // ---------------------------------------------------------------- generate

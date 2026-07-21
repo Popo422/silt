@@ -32,4 +32,11 @@ export const ART = {
   'piece-p1': './assets/art/piece-p1-cut.png',
   'piece-p2': './assets/art/piece-p2-cut.png',
   'piece-p3': './assets/art/piece-p3-cut.png',
+  // Two-season art (Phase 1-2). The amihan/habagat pair heads the season banner; the
+  // flood/cascade pieces mark the wet-season beats. Generated via `node gen-assets.mjs
+  // seasons` and promoted from assets/gen/.
+  'season-amihan':  './assets/art/season-amihan.png',
+  'season-habagat': './assets/art/season-habagat.png',
+  'flood-surge':    './assets/art/flood-surge.png',
+  'anod-cascade':   './assets/art/anod-cascade.png',
 };
