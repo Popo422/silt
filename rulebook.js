@@ -3,7 +3,7 @@
 // sync with the engine, and from the active theme so the vocabulary matches the
 // board the player is looking at.
 
-import { TUNING } from './engine.js';
+import { TUNING, totalRounds } from './engine.js';
 import { CHANNELS } from './graph.js';
 import { figDepths, figSilt, figToll, figChoke } from './diagrams.js';
 
@@ -30,9 +30,10 @@ export function pages(T) {
         it costs actions you would rather spend earning.</p>
         <p>There are no hidden cards and nothing you can play at another player. You
         lose because you misread the board, not because you were ambushed.</p>
-        <p><b>${TUNING.rounds} ${anod ? 'taon' : 'rounds'}.</b> Highest score wins.
-        The next three pages teach you a first game; the rest of the book is
-        reference — flip to it when you are unsure how something resolves.</p>`,
+        <p><b>${totalRounds()} ${anod ? 'taon' : 'rounds'}${TUNING.seasons
+          ? `, played as two ${TUNING.roundsPerSeason}-round seasons` : ''}.</b>
+        Highest score wins. The next three pages teach you a first game; the rest of
+        the book is reference — flip to it when you are unsure how something resolves.</p>`,
     },
     {
       title: anod ? 'Simulâ' : 'Setup',
@@ -95,6 +96,10 @@ export function pages(T) {
         refills only <b>${TUNING.stationYield}</b> a round — but a single shipment
         takes <b>${TUNING.shipCubesMax}</b>. Nodes run dry faster than they fill, so
         you must keep spreading your shipping or expand to new land.</p>
+        ${TUNING.seasons ? `<p class="tip">Once per game, at the start of the second
+        season (round ${TUNING.roundsPerSeason + 1}), a <b>flood</b> refills every
+        channel to full depth before that round is programmed — see “The Two
+        Seasons”.</p>` : ''}
         <p class="tip">Because you commit two actions blind, the real skill is
         predicting which channels will still be open when your second action fires.</p>`,
     },
@@ -209,6 +214,34 @@ export function pages(T) {
         settlement is dead for the rest of the game.</p>
         ${figChoke(T)}`,
     },
+    ...(TUNING.seasons ? [{
+      title: anod ? 'Ang Dalawang Panahón' : 'The Two Seasons',
+      sub: 'part two · reference — the drought, the flood, and the wet year',
+      body: `
+        <p>The game is one <b>${anod ? 'taon' : 'year'}</b> in two halves of
+        <b>${TUNING.roundsPerSeason}</b> rounds each.</p>
+        <dl class="acts">
+          <dt>${anod ? 'Amihan' : 'Amihan — the dry season'}</dt>
+          <dd>Rounds 1–${TUNING.roundsPerSeason}. The ordinary game: you ship, you
+            dredge, and every shipment silts the water. The river only gets shallower —
+            a one-way drought. Play it as you would any game of ${anod ? 'ANOD' : 'SILT'}.</dd>
+          <dt>${anod ? 'Ang Baha' : 'The flood'}</dt>
+          <dd>At the turn into the second season the <b>rains arrive and the whole delta
+            floods back to full depth</b> — every channel, even ones that had silted
+            dead, is deep and open again. This is the one moment the water gets
+            <i>better</i> instead of worse.</dd>
+          <dt>${anod ? 'Habagat' : 'Habagat — the wet season'}</dt>
+          <dd>Rounds ${TUNING.roundsPerSeason + 1}–${totalRounds()}. A second full game
+            on the restored river — but you keep everything you built: your
+            ${X.station.name.toLowerCase()}s, your claimed channels, your score and
+            ${X.contract.name.toLowerCase()}s all carry over. Only the water resets.</dd>
+        </dl>
+        <p class="warn">What this means for play: the drought punishes overreach — a
+        route you silt to death in the first season stays dead until the flood. But the
+        flood <b>wipes the slate</b>, so late in Amihan it can be worth spending a
+        channel you know the rains will bring back. Position, not water, is what you
+        carry across the year.</p>`,
+    }] : []),
     {
       title: anod ? 'Singil' : 'Tolls',
       sub: 'part two · reference — why anyone repairs anything',

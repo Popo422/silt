@@ -96,21 +96,33 @@ export const AMBIENT = [
   {
     id: 'mid-game',
     round: 4, slot: null,
-    kicker: 'Halfway',
+    kicker: 'The dry season',
     title: () => 'Take a look at the water now',
     body: (T) => `Compare that to round one. Here is the thing — nobody attacked the `
         + `river. Not once. Every bit of missing ${T.terms.depth.name.toLowerCase()} `
-        + `is just somebody having a good turn.`,
+        + `is just somebody having a good turn. And in this first season, the dry one, `
+        + `it only ever gets worse.`,
+  },
+  {
+    id: 'flood',
+    round: 9, slot: null,
+    kicker: 'The rains',
+    title: () => 'The flood — the whole delta comes back',
+    body: (T) => `That is the turn of the year. The Habagat rains arrive and the river `
+        + `floods to full depth — every channel deep again, even the ones that had `
+        + `silted dead. But watch what does NOT reset: every `
+        + `${T.terms.station.name.toLowerCase()}, every claim, every point stays exactly `
+        + `where it was. You keep what you built; only the water is new.`,
   },
   {
     id: 'late',
-    round: 7, slot: null,
+    round: 15, slot: null,
     kicker: 'Endgame',
-    title: () => 'We are running out of river',
-    body: (T) => `Now, a ${T.terms.station.name.toLowerCase()} only scores at the end `
-        + `if it can still reach the sea. So the players who shipped hardest all game? `
-        + `They are the ones most likely to be stranded — in water they used up `
-        + `themselves. Let us see how that shakes out.`,
+    title: () => 'We are running out of river again',
+    body: (T) => `Second season, same lesson. A ${T.terms.station.name.toLowerCase()} `
+        + `only scores at the end if it can still reach the sea. The players who shipped `
+        + `hardest since the flood are the ones most likely to be stranded — in water `
+        + `they used up themselves. Let us see how the year shakes out.`,
   },
 ];
 

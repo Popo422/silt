@@ -344,7 +344,9 @@ function start(tutorial, s = Math.floor(Math.random() * 1e9)) {
 // resolution walker never stop for input, because its human branch is guarded
 // on `pi === HUMAN && !p.strat`. Everything else here is presentation.
 function startDemo() {
-  TUNING.rounds = 8;
+  // Watch mode shows the real default game, which is now the two-season game — the
+  // flood at the season turn is the single most striking thing to watch, so the demo
+  // must run the full year, not a lone 8-round era.
   resetGame(DEMO_BOTS.length, DEMO_SEED);
   g.players.forEach((p, i) => { p.strat = DEMO_BOTS[i]; p.name = botName(p.strat); });
 
@@ -354,7 +356,7 @@ function startDemo() {
     render,
     step: () => step(),
     roundOf: () => g.round,
-    rounds: () => TUNING.rounds,
+    rounds: () => totalRounds(),
     // Watch mode always runs at full pace whatever the speed toggle says — the
     // captions are the whole point and need time to read. (Speed 'off' persists, so
     // a returning viewer who clicked Watch used to get all 8 rounds in <100ms.)
