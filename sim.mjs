@@ -41,19 +41,23 @@ export function playGame(strats, seed) {
   for (const e of g.events ?? []) {
     if (e.type === 'fizzle' || e.type === 'blocked') waste[e.pi] += 1;
   }
-  // Bay reachability at game end — the metric that catches the cascade/bagyo failure
-  // the braided map guards against. `liveStations` = players with at least one station
-  // that can still reach the sea; `deadPlayers` = players fully cut off (a real loss of
-  // agency, not just a low score). `baysOpen` = how many of the 3 bays anyone can reach.
+  // Bay reachability at game end — the metrics that catch the cascade/bagyo failure the
+  // braided map guards against.
+  //   deadPlayers — players with NO station that can still reach the sea. A real loss of
+  //     agency (can't ship at all), not merely a low score. This is the headline metric.
+  //   baysOpen    — how many of the 3 bays are still reachable OVER LIVING WATER FROM THE
+  //     SOURCE, i.e. map connectivity, independent of where players happened to settle.
+  //     (An earlier version counted bays a player's station could reach, which conflated
+  //     "map is dead" with "nobody built toward that bay" — a false alarm.)
   const liveStations = g.players.filter(p =>
     p.stations.some(s => canReachMouth(g, s, 1))).length;
   const deadPlayers = g.players.length - liveStations;
-  const baysOpen = MOUTHS.filter(m =>
-    g.players.some(p => p.stations.some(s => canReachMouth(g, s, 1) && reachesBay(g, s, m)))).length;
+  const SOURCE = 'S';   // the delta's headwater; every route descends from here
+  const baysOpen = MOUTHS.filter(m => reachesBay(g, SOURCE, m)).length;
   return { scores: score(g), silted, cubesLeft, filled, waste, deadPlayers, baysOpen, g };
 }
 
-// Can station `from` reach a specific bay `m` over living water? (canReachMouth only
+// Can node `from` reach a specific bay `m` over living water? (canReachMouth only
 // answers "any bay"; the balance sweep needs per-bay, to see if the bagyo/cascade
 // strands a whole region.)
 function reachesBay(g, from, m) {

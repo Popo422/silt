@@ -240,7 +240,7 @@ describe('season plumbing (Phase 0)', () => {
   // contract, including the parts that are easy to get subtly wrong: it must be inert
   // off the turn, cap at maxDepth, and never touch what a player built.
   describe('the flood (Phase 1)', () => {
-    const SEASON_KEYS = ['seasons', 'roundsPerSeason', 'rounds', 'floodRefill', 'floodRevive'];
+    const SEASON_KEYS = ['seasons', 'roundsPerSeason', 'rounds', 'floodFull', 'floodRefill', 'floodRevive'];
     let saved;
     const snap = () => { saved = Object.fromEntries(SEASON_KEYS.map(k => [k, TUNING[k]])); };
     afterEach(() => { if (saved) for (const k of SEASON_KEYS) TUNING[k] = saved[k]; });
@@ -281,6 +281,7 @@ describe('season plumbing (Phase 0)', () => {
       snap();
       TUNING.seasons = true;
       TUNING.roundsPerSeason = 6;
+      TUNING.floodFull = false;          // partial-flood mode
       TUNING.floodRefill = 2;
       const g = atRound(7);
       const keys = Object.keys(g.depth);
@@ -326,7 +327,7 @@ describe('season plumbing (Phase 0)', () => {
       snap();
       TUNING.seasons = true;
       TUNING.roundsPerSeason = 6;
-      TUNING.floodRevive = true;
+      // Holds for both flood modes: a channel that comes back sheds its old claim.
       // Kill every channel, so any revive is observable, and stamp stale ownership
       // that MUST be cleared if the channel comes back.
       const g = atRound(7);
@@ -343,10 +344,27 @@ describe('season plumbing (Phase 0)', () => {
       }
     });
 
-    it('with revive off, dead channels stay dead through the flood', () => {
+    it('full flood (default) restores the WHOLE delta — every channel to max depth', () => {
       snap();
       TUNING.seasons = true;
       TUNING.roundsPerSeason = 6;
+      TUNING.floodFull = true;
+      // Ruin the delta: a mix of silted-shallow and fully-dead channels.
+      const g = atRound(7);
+      const keys = Object.keys(g.depth);
+      keys.slice(0, 5).forEach(k => { g.depth[k] = 0; });    // dead
+      keys.slice(5, 10).forEach(k => { g.depth[k] = 1; });   // shallow
+      floodPhase(g);
+      // The rains bring EVERYTHING back to full depth — this is the era reset that
+      // stops the 16-round game silting to death.
+      for (const k of keys) expect(g.depth[k], k).toBe(TUNING.maxDepth);
+    });
+
+    it('partial mode with revive off leaves dead channels dead', () => {
+      snap();
+      TUNING.seasons = true;
+      TUNING.roundsPerSeason = 6;
+      TUNING.floodFull = false;          // partial-flood mode
       TUNING.floodRevive = false;
       const g = atRound(7);
       const dead = Object.keys(g.depth).slice(0, 3);
@@ -355,10 +373,11 @@ describe('season plumbing (Phase 0)', () => {
       for (const k of dead) expect(g.depth[k]).toBe(0);
     });
 
-    it('is deterministic: same seed reproduces the same revive outcome', () => {
+    it('partial-mode revive is deterministic: same seed, same outcome', () => {
       snap();
       TUNING.seasons = true;
       TUNING.roundsPerSeason = 6;
+      TUNING.floodFull = false;
       TUNING.floodRevive = true;
       const run = () => {
         const g = atRound(7, 4242);

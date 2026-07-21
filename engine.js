@@ -8,17 +8,30 @@ export const TUNING = {
   // cascade + bagyo). Phase 0 adds ONLY the plumbing: with `seasons` off, seasonOf()
   // always returns 'amihan', totalRounds() stays `rounds`, and play is byte-identical
   // to today. Each later phase turns on one behaviour behind its own flag.
-  seasons: false,           // master switch for the two-season game
-  roundsPerSeason: 6,       // 6 + 6 = 12 total when seasons on (see totalRounds)
+  // The two-season game is the default: two normal 8-round eras joined by a flood that
+  // fully refills the delta between them (see floodFull). It measures as healthy as the
+  // single-season game (dead ~0.1, win-spread ~15). Set seasons:false for the classic
+  // one-era 8-round game, still fully supported.
+  seasons: true,            // master switch for the two-season game
+  roundsPerSeason: 8,       // 8 + 8 = 16 total when seasons on (see totalRounds). Two
+                            //   full eras: an Amihan drought, then a Habagat flood-reset.
   // Phase 1 — the flood. On the Amihan->Habagat turn the rains refill the delta:
   // every still-living channel gains `floodRefill` depth (capped at maxDepth), and a
   // dead channel has a `floodRevive` chance to carve back to depth 1. Stations and
   // dredge-claims are deliberately NOT touched — what you built persists across the
   // turn; only the water comes back. Reckoning (pay-or-lose upkeep at the turn) is
   // parked off for now per the roadmap.
-  floodRefill: 2,           // depth added to each living channel at the season turn
-  floodRevive: true,        // do dead (depth 0) channels get a chance to come back?
-  floodReviveTo: 1,         // depth a revived channel returns at
+  // The Habagat flood is the era's reset: the rains arrive and the whole delta floods
+  // back to life. This is the structural counter to the drought's one-way silting —
+  // era 2 starts from fresh high water, not from era 1's accumulated damage (without
+  // it, silt compounds across all 16 rounds and ~2 of 3 players end cut off from the
+  // sea). floodFull restores EVERY channel to full depth and carves every dead one back
+  // open; the softer partial-refill numbers below are kept for tuning if a gentler
+  // flood is ever wanted.
+  floodFull: true,          // does the flood fully restore the delta (all channels max)?
+  floodRefill: 2,           // (partial mode) depth added to each living channel
+  floodRevive: true,        // (partial mode) do dead channels get a chance to come back?
+  floodReviveTo: 1,         // (partial mode) depth a revived channel returns at
   // Phase 2 — Cascading Anód. In Habagat only, the moving flood carries sediment
   // downstream: when a channel silts, the loss spills one hop toward the sea. Modelled
   // as a single, non-recursive wave — each channel that lost depth this sweep drags its
@@ -26,7 +39,12 @@ export const TUNING = {
   // cascade at most once per sweep (no chain reactions, no infinite loops). This is
   // what makes the wet season political: your shipping silts YOUR channel, and the
   // silt then chokes whoever is downstream of you.
-  cascadeAnod: true,        // does silt cascade downstream in Habagat?
+  // DEFAULT OFF. Cascade works and is tested, but on the 37-channel map it (with the
+  // bagyo) silts the delta to death over 16 rounds — sims showed ~2 of 3 players cut off
+  // from the sea and <1 bay reachable. The shipped two-season game is "two normal 8-round
+  // games joined by a flood reset", which measures as healthy as the base game (dead
+  // ~0.1, spread ~15). Cascade stays here for a shorter variant or a larger future map.
+  cascadeAnod: false,       // does silt cascade downstream in Habagat?
   cascadeDrop: 1,           // depth a downstream channel loses from an upstream silting
   // Phase 3 — Tanáw forecasts. Surveying reveals which channels the coming round is
   // most likely to silt (this round's ship routes) or cascade into (their downstream
@@ -42,7 +60,10 @@ export const TUNING = {
   // a way around or race to cash contracts before it hits), survivable if you read it,
   // ruinous if you don't. `bagyoLandfallFromEnd` places landfall N rounds before the
   // game ends; `bagyoRadius` 1 = the target bay's feeder channels, 2 = also one tier up.
-  bagyo: true,              // is there a typhoon climax in Habagat?
+  // DEFAULT OFF, same reason as cascade above: the storm destroying a whole bay approach
+  // is too much for this map to recover from within a 16-round game. Kept behind the flag
+  // (fully built + tested) for a bigger map or a shorter, higher-intensity variant.
+  bagyo: false,             // is there a typhoon climax in Habagat?
   bagyoLandfallFromEnd: 1,  // landfall this many rounds before the last (0 = final round)
   bagyoRadius: 2,           // 1 = bay feeders only; 2 = feeders + the tier above them
   startCoins: 8,
@@ -802,22 +823,32 @@ export function siltPhase(g) {
 }
 
 // The flood (Phase 1). Called once, on the round that begins Habagat, BEFORE that
-// round's actions — the rains have arrived and the delta is navigable again. Every
-// living channel deepens by `floodRefill`; dead channels may `floodRevive` back to a
-// shallow trickle. Stations and dredge-claims are untouched: the flood restores water,
+// round's actions — the rains arrive and the whole delta floods back to life. This is
+// the era reset: the drought's one-way silting is wiped clean so era 2 starts from
+// fresh high water, which is what keeps the 16-round game from silting to death. With
+// floodFull (the default), EVERY channel goes to full depth and every dead one carves
+// back open; the partial-flood path (floodRefill/floodRevive) is kept for tuning a
+// gentler flood. Stations and dredge-claims are untouched: the flood restores water,
 // not settlements, so what you built in the drought carries into the wet season.
 //
 // A no-op unless seasons are on AND this is the season turn, so the normal per-round
-// loop can call it unconditionally at the top of every round. Reviving uses g.rand
-// (the game's seeded RNG) so replays match; a revived channel is a fresh contest —
-// no owner, no markers — exactly like one that silted away.
+// loop can call it unconditionally at the top of every round. A revived/reflooded
+// channel is a fresh contest — owner and markers cleared, like one that silted away —
+// so the flood also wipes the drought's dredging claims (the high water is a new race).
 export function floodPhase(g) {
   if (!isSeasonTurn(g.round)) return;
   const raised = [], revived = [];
   for (const k of Object.keys(g.depth)) {
-    if (g.depth[k] > 0) {
-      const before = g.depth[k];
-      g.depth[k] = Math.min(TUNING.maxDepth, g.depth[k] + TUNING.floodRefill);
+    const before = g.depth[k];
+    if (TUNING.floodFull) {
+      // The rains restore the whole delta. Living channels go to full depth; dead ones
+      // carve back open (and, being a fresh channel, shed any old claim).
+      if (before === 0) { g.rights[k] = null; g.markers[k] = {}; g.mostRecent[k] = null; }
+      g.depth[k] = TUNING.maxDepth;
+      if (g.depth[k] !== before) (before === 0 ? revived : raised)
+        .push({ channel: k, from: before, to: g.depth[k] });
+    } else if (before > 0) {
+      g.depth[k] = Math.min(TUNING.maxDepth, before + TUNING.floodRefill);
       if (g.depth[k] !== before) raised.push({ channel: k, from: before, to: g.depth[k] });
     } else if (TUNING.floodRevive && g.rand() < 0.5) {
       g.depth[k] = TUNING.floodReviveTo;
@@ -825,7 +856,7 @@ export function floodPhase(g) {
       revived.push({ channel: k, to: g.depth[k] });
     }
   }
-  g.log.push(`The Habagat rains arrive — the delta floods: ${raised.length} `
+  g.log.push(`The Habagat rains arrive — the delta floods back to life: ${raised.length} `
     + `${raised.length === 1 ? 'channel deepens' : 'channels deepen'}`
     + `${revived.length ? `, ${revived.length} carve back open` : ''}`);
   emit(g, 'flood', { raised, revived });
