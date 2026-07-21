@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
-  newGame, execute, siltPhase, bayBonusPhase, regrowPhase, upkeepPhase, seatOrder,
+  newGame, execute, siltPhase, floodPhase, bayBonusPhase, regrowPhase, upkeepPhase, seatOrder,
   score, totalRounds, seasonOf, isSeasonTurn, TUNING,
 } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
@@ -17,6 +17,7 @@ function playHeadless(strats, seed) {
   let rounds = 0;
   for (g.round = 1; g.round <= totalRounds(); g.round++) {
     g.season = seasonOf(g.round);
+    floodPhase(g);
     seasonsSeen.add(g.season);
     rounds++;
     for (const p of g.players) p.program = STRATEGIES[p.strat](g, p);
@@ -229,6 +230,185 @@ describe('season plumbing (Phase 0)', () => {
       } finally {
         setSearchOptions({ rollouts: 140 });   // restore the shipped default
       }
+    });
+  });
+
+  // Phase 1 — the flood. floodPhase() fires once, on the season turn, and refills the
+  // delta while leaving settlements and claims alone. These pin every part of that
+  // contract, including the parts that are easy to get subtly wrong: it must be inert
+  // off the turn, cap at maxDepth, and never touch what a player built.
+  describe('the flood (Phase 1)', () => {
+    const SEASON_KEYS = ['seasons', 'roundsPerSeason', 'rounds', 'floodRefill', 'floodRevive'];
+    let saved;
+    const snap = () => { saved = Object.fromEntries(SEASON_KEYS.map(k => [k, TUNING[k]])); };
+    afterEach(() => { if (saved) for (const k of SEASON_KEYS) TUNING[k] = saved[k]; });
+
+    // Build a game parked on a chosen round with a known depth landscape.
+    const atRound = (round, seed = 55) => {
+      const g = newGame(3, seed);
+      g.round = round;
+      g.season = seasonOf(round);
+      return g;
+    };
+
+    it('is a no-op when seasons are off, even on the would-be turn round', () => {
+      snap();
+      TUNING.seasons = false;
+      TUNING.roundsPerSeason = 6;
+      const g = atRound(7);
+      const k = Object.keys(g.depth)[0];
+      g.depth[k] = 1;
+      floodPhase(g);
+      expect(g.depth[k]).toBe(1);          // untouched
+    });
+
+    it('does nothing on a non-turn round even with seasons on', () => {
+      snap();
+      TUNING.seasons = true;
+      TUNING.roundsPerSeason = 6;
+      for (const r of [1, 6, 8, 12]) {     // every round EXCEPT the turn (7)
+        const g = atRound(r);
+        const k = Object.keys(g.depth)[0];
+        g.depth[k] = 1;
+        floodPhase(g);
+        expect(g.depth[k], `round ${r}`).toBe(1);
+      }
+    });
+
+    it('refills living channels by floodRefill on the turn, capped at maxDepth', () => {
+      snap();
+      TUNING.seasons = true;
+      TUNING.roundsPerSeason = 6;
+      TUNING.floodRefill = 2;
+      const g = atRound(7);
+      const keys = Object.keys(g.depth);
+      g.depth[keys[0]] = 1;                 // will rise to 3
+      g.depth[keys[1]] = 2;                 // 2 + 2 = 4, but capped at maxDepth (3)
+      g.depth[keys[2]] = TUNING.maxDepth;   // already max, stays
+      floodPhase(g);
+      expect(g.depth[keys[0]]).toBe(Math.min(TUNING.maxDepth, 3));
+      expect(g.depth[keys[1]]).toBe(TUNING.maxDepth);
+      expect(g.depth[keys[2]]).toBe(TUNING.maxDepth);
+    });
+
+    it('never pushes any channel past maxDepth', () => {
+      snap();
+      TUNING.seasons = true;
+      TUNING.roundsPerSeason = 6;
+      TUNING.floodRefill = 5;               // deliberately huge
+      const g = atRound(7);
+      floodPhase(g);
+      for (const k of Object.keys(g.depth)) {
+        expect(g.depth[k]).toBeLessThanOrEqual(TUNING.maxDepth);
+      }
+    });
+
+    it('leaves stations and dredge-claims untouched — you keep what you built', () => {
+      snap();
+      TUNING.seasons = true;
+      TUNING.roundsPerSeason = 6;
+      const g = atRound(7);
+      // Give player 0 a claimed, living channel and record station list.
+      const k = Object.keys(g.depth).find(key => g.depth[key] > 0);
+      g.rights[k] = 0;
+      g.markers[k] = { 0: 2 };
+      const stationsBefore = g.players.map(p => [...p.stations]);
+      floodPhase(g);
+      // Rights on a channel that stayed alive persist across the flood.
+      expect(g.rights[k]).toBe(0);
+      expect(g.markers[k]).toEqual({ 0: 2 });
+      g.players.forEach((p, i) => expect(p.stations).toEqual(stationsBefore[i]));
+    });
+
+    it('a revived dead channel is a fresh contest — no owner, no markers', () => {
+      snap();
+      TUNING.seasons = true;
+      TUNING.roundsPerSeason = 6;
+      TUNING.floodRevive = true;
+      // Kill every channel, so any revive is observable, and stamp stale ownership
+      // that MUST be cleared if the channel comes back.
+      const g = atRound(7);
+      for (const k of Object.keys(g.depth)) {
+        g.depth[k] = 0; g.rights[k] = 1; g.markers[k] = { 1: 3 }; g.mostRecent[k] = 1;
+      }
+      floodPhase(g);
+      for (const k of Object.keys(g.depth)) {
+        if (g.depth[k] > 0) {               // revived
+          expect(g.rights[k], `revived ${k} owner`).toBeNull();
+          expect(g.markers[k], `revived ${k} markers`).toEqual({});
+          expect(g.mostRecent[k]).toBeNull();
+        }
+      }
+    });
+
+    it('with revive off, dead channels stay dead through the flood', () => {
+      snap();
+      TUNING.seasons = true;
+      TUNING.roundsPerSeason = 6;
+      TUNING.floodRevive = false;
+      const g = atRound(7);
+      const dead = Object.keys(g.depth).slice(0, 3);
+      for (const k of dead) g.depth[k] = 0;
+      floodPhase(g);
+      for (const k of dead) expect(g.depth[k]).toBe(0);
+    });
+
+    it('is deterministic: same seed reproduces the same revive outcome', () => {
+      snap();
+      TUNING.seasons = true;
+      TUNING.roundsPerSeason = 6;
+      TUNING.floodRevive = true;
+      const run = () => {
+        const g = atRound(7, 4242);
+        for (const k of Object.keys(g.depth)) g.depth[k] = 0;   // all dead
+        floodPhase(g);
+        return Object.keys(g.depth).filter(k => g.depth[k] > 0).sort();
+      };
+      expect(run()).toEqual(run());
+    });
+
+    it('emits a single flood event carrying the raised/revived channels', () => {
+      snap();
+      TUNING.seasons = true;
+      TUNING.roundsPerSeason = 6;
+      const g = atRound(7);
+      g.events = [];
+      floodPhase(g);
+      const floods = g.events.filter(e => e.type === 'flood');
+      expect(floods).toHaveLength(1);
+      expect(Array.isArray(floods[0].raised)).toBe(true);
+      expect(Array.isArray(floods[0].revived)).toBe(true);
+    });
+
+    it('in a full seasons-on game, average depth is higher just after the turn than just before', () => {
+      snap();
+      TUNING.seasons = true;
+      TUNING.roundsPerSeason = 6;
+      const g = newGame(3, 2024);
+      g.players.forEach((p) => { p.strat = 'balanced'; });
+      const avg = () => {
+        const v = Object.values(g.depth);
+        return v.reduce((a, b) => a + b, 0) / v.length;
+      };
+      let before = null, after = null;
+      for (g.round = 1; g.round <= totalRounds(); g.round++) {
+        g.season = seasonOf(g.round);
+        if (isSeasonTurn(g.round)) before = avg();
+        floodPhase(g);
+        if (before !== null && after === null) after = avg();
+        for (const p of g.players) p.program = STRATEGIES[p.strat](g, p);
+        for (let slot = 0; slot < 2; slot++) {
+          const claimed = new Set();
+          for (const pi of seatOrder(g)) {
+            const p = g.players[pi];
+            const a = p.program[slot];
+            if (a) execute(g, pi, a, chooseTarget(g, p, a, p.strat) ?? {}, claimed);
+          }
+        }
+        siltPhase(g); bayBonusPhase(g); regrowPhase(g); upkeepPhase(g);
+      }
+      expect(before).not.toBeNull();
+      expect(after).toBeGreaterThan(before);   // the rains actually raised the water
     });
   });
 });

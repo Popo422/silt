@@ -1,13 +1,13 @@
 import { NODE_BY_ID } from './graph.js';
 import {
-  newGame, execute, siltPhase, bayBonusPhase, regrowPhase, upkeepPhase, score, seatOrder,
-  buildTargets, dredgeTargets, shipOptions, buildCost, buildStepCost, surveyDrawnFor, TUNING,
-  totalRounds, seasonOf } from './engine.js';
+  newGame, execute, siltPhase, floodPhase, bayBonusPhase, regrowPhase, upkeepPhase, score,
+  seatOrder, buildTargets, dredgeTargets, shipOptions, buildCost, buildStepCost, surveyDrawnFor,
+  TUNING, totalRounds, seasonOf } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
 import { setSearchOptions } from './mcts.js';   // registers the `mcts` search strategy + lets us cap its per-move think time
 import { createTutorial, stepText } from './tutorial.js';
 import { createDemo, paintCaption, wireDemo, DEMO_SEED, DEMO_BOTS } from './demo.js';
-import { THEMES, applyTheme, nodeLabel } from './theme.js';
+import { THEMES, applyTheme, nodeLabel, glossaryHTML } from './theme.js';
 import { pages, createRulebook } from './rulebook.js';
 import { createFX } from './fx.js';
 import { createPanZoom } from './panzoom.js';
@@ -237,28 +237,9 @@ function paintMenuText() {
 function paintGlossary() {
   const el2 = $('glossBody');
   if (!el2) return;
-  if (T.id !== 'anod') {
-    $('gloss').style.display = 'none';
-    return;
-  }
-  $('gloss').style.display = '';
-  const row = (o) => `<dt>${o.name}</dt><dd>${o.gloss}</dd>`;
-  el2.innerHTML = `
-    <h5>What you do</h5>
-    <dl>${Object.values(T.actions).map(a =>
-      `<dt>${a.name}</dt><dd>${a.gloss} — ${a.note}</dd>`).join('')}</dl>
-    <h5>What you move</h5>
-    <dl>${Object.values(T.goods).map(row).join('')}</dl>
-    <h5>On the board</h5>
-    <dl>${['station','mouth','channel','silted','coins','toll','player']
-      .map(k => row(T.terms[k])).join('')}</dl>
-    <p><b>The setting.</b> The Pasig and Pampanga rivers empty into Manila Bay
-    through a shifting delta. Before Spanish contact, rival polities —
-    <b>Tundó</b>, <b>Maynilà</b>, <b>Namayan</b> — sat on that water and taxed the
-    trade moving through it. The place names on the board are theirs. The river
-    really does silt up, and dredging it really was the price of keeping a port.</p>
-    <p style="color:var(--dim2)">Place names and terms are best-effort and worth a
-    check by a native speaker before this is more than a prototype.</p>`;
+  const html = glossaryHTML(T);       // '' for non-anod themes
+  $('gloss').style.display = html ? '' : 'none';
+  if (html) el2.innerHTML = html;
 }
 
 // ---------------------------------------------------------------- rulebook
@@ -991,6 +972,11 @@ async function endRound() {
   if (g.round >= totalRounds()) return finish();
   g.round++;
   g.season = seasonOf(g.round);
+  // The flood is the season's opening beat: on the Amihan->Habagat turn the delta
+  // refills. Give it its own flush so the water visibly comes back (mirrors how the
+  // silt sweep gets its own beat above). A no-op on every other round.
+  floodPhase(g);
+  await flush();
   // NOTE: committedThisRound deliberately stays true here. The programs remain
   // face-up while you plan the next round, because "what did everyone just do"
   // is the main input to that decision. It flips back to false on the next

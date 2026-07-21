@@ -10,6 +10,15 @@ export const TUNING = {
   // to today. Each later phase turns on one behaviour behind its own flag.
   seasons: false,           // master switch for the two-season game
   roundsPerSeason: 6,       // 6 + 6 = 12 total when seasons on (see totalRounds)
+  // Phase 1 — the flood. On the Amihan->Habagat turn the rains refill the delta:
+  // every still-living channel gains `floodRefill` depth (capped at maxDepth), and a
+  // dead channel has a `floodRevive` chance to carve back to depth 1. Stations and
+  // dredge-claims are deliberately NOT touched — what you built persists across the
+  // turn; only the water comes back. Reckoning (pay-or-lose upkeep at the turn) is
+  // parked off for now per the roadmap.
+  floodRefill: 2,           // depth added to each living channel at the season turn
+  floodRevive: true,        // do dead (depth 0) channels get a chance to come back?
+  floodReviveTo: 1,         // depth a revived channel returns at
   startCoins: 8,
   cubesPerNode: 4,          // was 3 — board went dry by R5
   regrowPerRound: 1,        // one upstream node refills each round
@@ -680,6 +689,36 @@ export function siltPhase(g) {
   if (gone) g.log.push(`  ${gone} ${gone === 1 ? "channel is" : "channels are"} now blocked for good`);
   emit(g, 'silt', { dropped, died, total: gone });
   g.shippedThisRound = new Set();
+}
+
+// The flood (Phase 1). Called once, on the round that begins Habagat, BEFORE that
+// round's actions — the rains have arrived and the delta is navigable again. Every
+// living channel deepens by `floodRefill`; dead channels may `floodRevive` back to a
+// shallow trickle. Stations and dredge-claims are untouched: the flood restores water,
+// not settlements, so what you built in the drought carries into the wet season.
+//
+// A no-op unless seasons are on AND this is the season turn, so the normal per-round
+// loop can call it unconditionally at the top of every round. Reviving uses g.rand
+// (the game's seeded RNG) so replays match; a revived channel is a fresh contest —
+// no owner, no markers — exactly like one that silted away.
+export function floodPhase(g) {
+  if (!isSeasonTurn(g.round)) return;
+  const raised = [], revived = [];
+  for (const k of Object.keys(g.depth)) {
+    if (g.depth[k] > 0) {
+      const before = g.depth[k];
+      g.depth[k] = Math.min(TUNING.maxDepth, g.depth[k] + TUNING.floodRefill);
+      if (g.depth[k] !== before) raised.push({ channel: k, from: before, to: g.depth[k] });
+    } else if (TUNING.floodRevive && g.rand() < 0.5) {
+      g.depth[k] = TUNING.floodReviveTo;
+      g.rights[k] = null; g.markers[k] = {}; g.mostRecent[k] = null;
+      revived.push({ channel: k, to: g.depth[k] });
+    }
+  }
+  g.log.push(`The Habagat rains arrive — the delta floods: ${raised.length} `
+    + `${raised.length === 1 ? 'channel deepens' : 'channels deepen'}`
+    + `${revived.length ? `, ${revived.length} carve back open` : ''}`);
+  emit(g, 'flood', { raised, revived });
 }
 
 // The neglected-bay premium. After a round resolves, the bay that received the

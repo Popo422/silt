@@ -13,7 +13,7 @@
 // bots; a full tree can slot in later behind the same interface if needed.
 
 import {
-  execute, siltPhase, bayBonusPhase, regrowPhase, upkeepPhase, seatOrder, score,
+  execute, siltPhase, floodPhase, bayBonusPhase, regrowPhase, upkeepPhase, seatOrder, score,
   shipOptions, buildTargets, buildCost, buildStepCost, dredgeTargets, TUNING,
   totalRounds, seasonOf,
 } from './engine.js';
@@ -173,6 +173,10 @@ function rolloutPolicy(g, p, rand) {
 }
 
 function playoutRestOfTurn(g, me, turn, rand) {
+  // The clone drops the game's real RNG (rollouts must not touch it). Give it the
+  // rollout's own RNG so any engine phase that draws randomness — e.g. floodPhase's
+  // channel revive on the season turn — works and stays reproducible per search.
+  g.rand = rand;
   // Resolve the CURRENT slot-pair: `me` plays the candidate; everyone else plays
   // their committed program (already set for this round in the real game).
   for (let slot = 0; slot < 2; slot++) {
@@ -198,6 +202,7 @@ function playoutRestOfTurn(g, me, turn, rand) {
   // phases give it distinct rules) instead of stopping short at the old 8-round mark.
   for (g.round = g.round + 1; g.round <= totalRounds(); g.round++) {
     g.season = seasonOf(g.round);
+    floodPhase(g);   // refills the delta on the Amihan->Habagat turn (no-op otherwise)
     for (const p of g.players) p.program = normalizeProg(rolloutPolicy(g, p, rand));
     for (let slot = 0; slot < 2; slot++) {
       const claimed = new Set();

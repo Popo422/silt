@@ -219,3 +219,28 @@ export function applyTheme(t) {
 export const nodeLabel = (t, id) => t.short?.[id] ?? id;
 // Full name for tooltips / log.
 export const nodeName  = (t, id) => t.nodes?.[id] ?? id;
+
+// The glossary panel's inner HTML for a theme. Pure: reads only the theme, touches no
+// DOM and no game state — lives here with the rest of the display text (moved out of
+// ui.js, which is at its line cap). Returns '' for non-anod themes (the caller hides
+// the panel). ui.js keeps the two lines of show/hide + assignment.
+export function glossaryHTML(t) {
+  if (t.id !== 'anod') return '';
+  const row = (o) => `<dt>${o.name}</dt><dd>${o.gloss}</dd>`;
+  return `
+    <h5>What you do</h5>
+    <dl>${Object.values(t.actions).map(a =>
+      `<dt>${a.name}</dt><dd>${a.gloss} — ${a.note}</dd>`).join('')}</dl>
+    <h5>What you move</h5>
+    <dl>${Object.values(t.goods).map(row).join('')}</dl>
+    <h5>On the board</h5>
+    <dl>${['station', 'mouth', 'channel', 'silted', 'coins', 'toll', 'player']
+      .map(k => row(t.terms[k])).join('')}</dl>
+    <p><b>The setting.</b> The Pasig and Pampanga rivers empty into Manila Bay
+    through a shifting delta. Before Spanish contact, rival polities —
+    <b>Tundó</b>, <b>Maynilà</b>, <b>Namayan</b> — sat on that water and taxed the
+    trade moving through it. The place names on the board are theirs. The river
+    really does silt up, and dredging it really was the price of keeping a port.</p>
+    <p style="color:var(--dim2)">Place names and terms are best-effort and worth a
+    check by a native speaker before this is more than a prototype.</p>`;
+}

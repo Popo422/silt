@@ -68,18 +68,36 @@ comments. The guard's own note says "split, not bump again."
 **Checkpoint:** ✅ flag off → identical play & sims (verified by test + manual). Flag on
 → 12 rounds, visits both seasons, no errors, mcts still completes.
 
-## Phase 1 — The transition (Amihan → Habagat refill)
+## Phase 1 — The transition (Amihan → Habagat refill)  ✅ CORE DONE
 
 **Goal:** the pivot moment. Water comes back; what you built persists.
 
-- At the season turn: refill channel `depth` (toward max), keep `stations`, keep
-  `rights`/`markers`. This is the "rains arrive" beat.
-- A **reckoning** (optional, flag): pay upkeep on everything at the turn or lose it —
-  punishes drought overreach right as the rains hit.
-- UI: a clear season banner + the refill animation (reuse the silt-sweep renderer).
+Shipped:
+- `floodPhase(g)` in engine.js — fires once on the season turn (no-op otherwise, so all
+  three round loops call it unconditionally at the top of the round). Refills every
+  living channel by `TUNING.floodRefill` (capped at maxDepth); dead channels get a
+  seeded ~50% `floodRevive` back to depth 1 as a FRESH contest (owner + markers
+  cleared). Stations and living-channel claims are deliberately untouched.
+- Wired into sim.mjs, ui.js (its own flush = a visible "rains arrive" beat), and the
+  mcts rollout (clone now carries `g.rand` so the seeded revive works in search).
+- First ui.js split done to make room: `glossaryHTML(T)` moved to theme.js (ui.js
+  1100 → 1085). Headroom restored.
+- 10 new flood tests: inert off-turn / seasons-off, cap at maxDepth, stations+claims
+  untouched, revive clears ownership, revive-off keeps dead dead, determinism, single
+  event, and a full-game "depth higher just after the turn" check. 145 total green.
 
-**Checkpoint:** play through the turn. Does keeping balangay+claims but regaining water
-feel like relief-then-opportunity? Re-sim; MCTS still dominant?
+Verified by hand: a seasons-on game ratchets down through Amihan (avg depth 2.86→2.05,
+dead climbing), the R7 flood lifts it back (2.05→2.68, dead 5→2), then Habagat resumes
+the decline — the intended prep-then-relief rhythm.
+
+Still TODO in this phase (polish, not blocking):
+- A real flood **animation** (currently the `flood` fx event falls through to the
+  no-op default; reuse the silt-sweep renderer in reverse) + a **season banner** in
+  the UI so the player is told Habagat has begun. Art budget is available for this.
+- **Reckoning** stays parked/off per the locked decisions.
+
+**Checkpoint:** ✅ transition feels like relief-then-opportunity (verified numerically).
+MCTS-still-dominant re-sim: running.
 
 ## Phase 2 — Cascading Anód  *(the intensity core)*
 
