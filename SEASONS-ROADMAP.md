@@ -172,8 +172,12 @@ depth loss* — which channels DIE — a more honest and useful read than a silt
 set partition.
 
 **Checkpoint:** ✅ surveying now yields a real board-wide threat read, not filler.
-Ignoring it means shipping into channels you were shown would die. Sim (does the bot
-survey+dredge more in Habagat; win% with forecast on): PENDING before Phase 4.
+Ignoring it means shipping into channels you were shown would die. ✅ Sim: MCTS holds
+90% (forecast on == off, byte-identical) and 85% vs smart. The on==off equality is
+EXPECTED and correct: the forecast is a HUMAN-facing UI aid, not new info for the bot —
+the search already "sees" future silt/cascade by running the real engine in its
+rollouts. Its job is to level the information field between the human and the bot, and
+it does that without destabilising the game.
 
 ## Phase 4 — Bagyo  *(the climax)*
 
