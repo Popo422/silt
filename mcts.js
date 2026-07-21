@@ -67,6 +67,7 @@ function cloneGame(g) {
     seed: g.seed,
     bayThisRound: { ...g.bayThisRound },
     bayBonus: g.bayBonus ? { ...g.bayBonus } : null,
+    forecast: g.forecast,   // read-only in rollouts; shared ref is fine
   };
 }
 

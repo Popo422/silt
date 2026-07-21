@@ -28,6 +28,14 @@ export const TUNING = {
   // silt then chokes whoever is downstream of you.
   cascadeAnod: true,        // does silt cascade downstream in Habagat?
   cascadeDrop: 1,           // depth a downstream channel loses from an upstream silting
+  // Phase 3 — Tanáw forecasts. Surveying reveals which channels the coming round is
+  // most likely to silt (this round's ship routes) or cascade into (their downstream
+  // neighbours, in Habagat). The read is what makes the wet season skill, not dice:
+  // you can see the water about to choke and dredge/route around it. Free with every
+  // Survey. `forecastFragileMax` is the depth at/below which a threatened channel is
+  // flagged "critical" — a lifeline one hit from dying.
+  forecastOnSurvey: true,   // does Survey reveal the next-round silt/cascade forecast?
+  forecastFragileMax: 1,    // depth ≤ this among the at-risk set is flagged critical
   startCoins: 8,
   cubesPerNode: 4,          // was 3 — board went dry by R5
   regrowPerRound: 1,        // one upstream node refills each round
@@ -255,6 +263,9 @@ export function newGame(playerCount = 3, seed = 12345) {
     // last round's neglect: { mouth, amount }, or null if none / already claimed.
     bayThisRound: Object.fromEntries(MOUTHS.map(m => [m, 0])),
     bayBonus: null,
+    // Tanáw forecast (Phase 3): { silt, cascade, critical, round, by } after a Survey,
+    // else null. The UI highlights it only while it names the current round.
+    forecast: null,
   };
 }
 
@@ -399,6 +410,44 @@ export function shipOptions(g, p) {
     }
   }
   return opts;
+}
+
+// The Tanáw forecast (Phase 3): which channels the COMING round is most likely to
+// choke, and by how much. It reads the board as it stands — every player's live ship
+// routes are the channels apt to silt next; in Habagat each such channel ALSO drops its
+// downstream neighbours (the cascade). It sums the projected loss per channel, so a
+// channel on many routes, or both shipped-through AND cascaded-into, reads as more
+// endangered. A projection of the current position, not a guarantee (people can route
+// elsewhere) — but exactly the read the wet season rewards: see the water about to
+// close and dredge or re-route before it does.
+//
+// Pure: reads stations/cubes/depth/season, mutates nothing. Returns
+//   { atRisk: [{channel, from, to, drop}], critical: [chKey] }
+// sorted worst-first (biggest projected drop). `critical` = channels the forecast
+// projects to DIE (reach depth 0) or already at/below forecastFragileMax. Exported so
+// the UI highlight and the bot share one definition of "at risk".
+export function forecastCascade(g) {
+  const loss = {};   // chKey -> projected depth lost next round
+  const add = (k, amt) => { if (g.depth[k] > 0) loss[k] = (loss[k] ?? 0) + amt; };
+  const wet = TUNING.cascadeAnod && seasonOf(g.round) === 'habagat';
+  for (const p of g.players) {
+    for (const o of shipOptions(g, p)) {
+      for (const k of o.path) {
+        add(k, TUNING.siltPerShip);
+        if (wet) {                                  // cascade to downstream neighbours
+          const mid = k.split('>')[1];
+          for (const nx of (g.out[mid] ?? [])) add(chKey(mid, nx), TUNING.cascadeDrop);
+        }
+      }
+    }
+  }
+  const atRisk = Object.entries(loss).map(([channel, drop]) => ({
+    channel, from: g.depth[channel], to: Math.max(0, g.depth[channel] - drop), drop,
+  })).sort((a, b) => (b.drop - a.drop) || (a.to - b.to));
+  const critical = atRisk
+    .filter(r => r.to <= 0 || r.from <= TUNING.forecastFragileMax)
+    .map(r => r.channel);
+  return { atRisk, critical };
 }
 
 // How attainable is contract `c` for player p, right now? Higher is better. A
@@ -663,8 +712,22 @@ export function execute(g, pi, action, choice, claimed) {
         }
         for (const c of drawn) if (c !== keep) g.deck.unshift(c);
       }
-      g.log.push(`${p.name} surveys, takes ${TUNING.surveyCoins} gold${keptName}`);
-      emit(g, 'survey', { pi, coins: TUNING.surveyCoins, drew: drawn.length });
+      // Tanáw reads the water: refresh the forecast of what the coming round will
+      // choke. Stored on the game so the board can highlight it and it survives until
+      // the next round's actions overwrite it. Free with every Survey.
+      let fc = null;
+      if (TUNING.forecastOnSurvey) {
+        fc = forecastCascade(g);
+        // Stamped with the round whose end-of-round silt it predicts (this one). The UI
+        // keeps showing it into the NEXT round too (see board.js) — that is when you act
+        // on the read, dredging or re-routing around the channels it warned would die.
+        g.forecast = { ...fc, round: g.round, by: pi };
+      }
+      const risk = fc ? fc.atRisk.length : 0;
+      g.log.push(`${p.name} surveys, takes ${TUNING.surveyCoins} gold${keptName}`
+        + `${fc ? ` — reads the water: ${risk} channel${risk === 1 ? '' : 's'} at risk`
+          + `${fc.critical.length ? `, ${fc.critical.length} may die` : ''}` : ''}`);
+      emit(g, 'survey', { pi, coins: TUNING.surveyCoins, drew: drawn.length, forecast: fc });
       break;
     }
   }

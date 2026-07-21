@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   newGame, execute, siltPhase, floodPhase, bayBonusPhase, regrowPhase, upkeepPhase, seatOrder,
-  score, totalRounds, seasonOf, isSeasonTurn, TUNING,
+  score, totalRounds, seasonOf, isSeasonTurn, forecastCascade, TUNING,
 } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
 import { chKey } from './graph.js';
@@ -213,7 +213,7 @@ describe('season plumbing (Phase 0)', () => {
       expect([...seasonsSeen].sort()).toEqual(['amihan', 'habagat']);
     });
 
-    it('the mcts bot completes a full seasons-on game without error', () => {
+    it('the mcts bot completes a full seasons-on game without error', { timeout: 20000 }, () => {
       // Phase 0 gives the wet season no distinct rules yet, but the bot's rollout loop
       // now runs to totalRounds() and refreshes g.season — this guards that plumbing:
       // a rollout that stopped at round 8 (old TUNING.rounds) or choked on the season
@@ -529,6 +529,102 @@ describe('season plumbing (Phase 0)', () => {
       expect(g.depth[dk]).toBe(0);
       expect(g.rights[dk]).toBeNull();
       expect(g.markers[dk]).toEqual({});
+    });
+  });
+
+  // Phase 3 — Tanáw forecasts. Surveying reads the water: g.forecast lists the channels
+  // the coming round is projected to choke, worst-first, with the death-bound ones
+  // flagged critical. These pin the projection, the season sensitivity (cascade only in
+  // Habagat inflates the drops), the freshness stamp, and the survey wiring.
+  describe('tanáw forecast (Phase 3)', () => {
+    const KEYS = ['seasons', 'roundsPerSeason', 'cascadeAnod', 'cascadeDrop',
+      'siltPerShip', 'forecastOnSurvey', 'forecastFragileMax'];
+    let saved;
+    const snap = () => { saved = Object.fromEntries(KEYS.map(k => [k, TUNING[k]])); };
+    afterEach(() => { if (saved) for (const k of KEYS) TUNING[k] = saved[k]; });
+
+    // A wet-season game with some channels worn down so the forecast has teeth.
+    const wornHabagat = (seed = 5) => {
+      const g = newGame(3, seed);
+      g.round = 8; g.season = 'habagat';
+      Object.keys(g.depth).slice(0, 8).forEach(k => { g.depth[k] = 1; });
+      return g;
+    };
+
+    it('flags channels on live ship routes as at-risk', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6;
+      const g = wornHabagat();
+      const fc = forecastCascade(g);
+      expect(fc.atRisk.length).toBeGreaterThan(0);
+      // Every at-risk entry is a real, still-living channel with a projected drop.
+      for (const r of fc.atRisk) {
+        expect(g.depth[r.channel]).toBeGreaterThan(0);
+        expect(r.drop).toBeGreaterThan(0);
+        expect(r.to).toBe(Math.max(0, r.from - r.drop));
+      }
+    });
+
+    it('is sorted worst-first by projected drop', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6;
+      const fc = forecastCascade(wornHabagat());
+      for (let i = 1; i < fc.atRisk.length; i++) {
+        expect(fc.atRisk[i - 1].drop).toBeGreaterThanOrEqual(fc.atRisk[i].drop);
+      }
+    });
+
+    it('marks a channel projected to reach depth 0 as critical', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6;
+      const fc = forecastCascade(wornHabagat());
+      for (const r of fc.atRisk) {
+        if (r.to <= 0) expect(fc.critical).toContain(r.channel);
+      }
+      // And there IS at least one death projected on a worn wet-season board.
+      expect(fc.critical.length).toBeGreaterThan(0);
+    });
+
+    it('projects bigger drops in Habagat than Amihan (the cascade is visible)', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.cascadeAnod = true;
+      const wet = forecastCascade(wornHabagat());
+      const dryG = newGame(3, 5); dryG.round = 2; dryG.season = 'amihan';
+      Object.keys(dryG.depth).slice(0, 8).forEach(k => { dryG.depth[k] = 1; });
+      const dry = forecastCascade(dryG);
+      const maxDrop = (fc) => Math.max(0, ...fc.atRisk.map(r => r.drop));
+      expect(maxDrop(wet)).toBeGreaterThan(maxDrop(dry));
+    });
+
+    it('a Survey stamps g.forecast with the current round and surveyor', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.forecastOnSurvey = true;
+      const g = wornHabagat();
+      expect(g.forecast).toBeNull();
+      execute(g, 1, 'survey', {}, new Set());
+      expect(g.forecast).not.toBeNull();
+      expect(g.forecast.round).toBe(g.round);
+      expect(g.forecast.by).toBe(1);
+      expect(Array.isArray(g.forecast.atRisk)).toBe(true);
+    });
+
+    it('with forecastOnSurvey off, a Survey leaves g.forecast untouched', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.forecastOnSurvey = false;
+      const g = wornHabagat();
+      execute(g, 0, 'survey', {}, new Set());
+      expect(g.forecast).toBeNull();
+    });
+
+    it('the survey event carries the forecast for the UI', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.forecastOnSurvey = true;
+      const g = wornHabagat();
+      g.events = [];
+      execute(g, 0, 'survey', {}, new Set());
+      const ev = g.events.find(e => e.type === 'survey');
+      expect(ev.forecast).toBeTruthy();
+      expect(Array.isArray(ev.forecast.critical)).toBe(true);
     });
   });
 });

@@ -292,6 +292,15 @@ export function drawBoard(ctx) {
   // through — and therefore what each choice will silt.
   const destMouths = new Set((routes ?? []).map(r => r.mouth));
 
+  // Tanáw forecast (Phase 3): channels the last Survey projected to die get a warning
+  // glyph, so a player who read the water can see which lifelines to dredge or route
+  // around. Shown for the round it predicted AND the next one (that is when you act on
+  // it) — but not a stale read from further back, which would just flash noise.
+  const forecastCrit = new Set(
+    g.forecast && g.round - g.forecast.round >= 0 && g.round - g.forecast.round <= 1
+      ? g.forecast.critical : [],
+  );
+
   // --- channels
   const tolls = [];
   // Channel click-targets are collected and appended LAST. Drawn inline they sat
@@ -385,6 +394,17 @@ export function drawBoard(ctx) {
         d: pathD, fill: 'none', stroke: 'var(--gold)',
         'stroke-width': base * 2 + 0.35, 'stroke-linecap': 'round',
         opacity: 0.75, class: 'pulse',
+      }));
+    }
+
+    // Forecast warning: a dashed red pulse on a channel the water-read says may die
+    // this round. Distinct from the gold dredge-target pulse (it is a threat, not an
+    // invitation), and drawn on top so it survives the depth tint.
+    if (forecastCrit.has(k)) {
+      svg.appendChild(el('path', {
+        d: pathD, fill: 'none', stroke: 'var(--bad)',
+        'stroke-width': base * 1.8 + 0.3, 'stroke-linecap': 'round',
+        'stroke-dasharray': '1.4 1.2', opacity: 0.85, class: 'pulse',
       }));
     }
 

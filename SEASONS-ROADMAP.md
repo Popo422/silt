@@ -142,19 +142,38 @@ the braided map guards against. Not broken (bot completes + wins; flood revive o
 some), but if playtests strand bays, turn `cascadeDrop` (1) down. Tuning item, not a
 blocker.
 
-## Phase 3 — Tanáw forecasts  *(the legitimizer)*
+## Phase 3 — Tanáw forecasts  *(the legitimizer)*  ✅ CORE DONE
 
 **Goal:** convert wet-season danger from dice into skill.
 
-- Survey (Tanáw) gains: reveal next round's silt/cascade hotspots and/or the Bagyo's
-  path & landfall round.
-- Store a `g.forecast` the UI can render (highlight at-risk channels) and the bot can
-  read.
-- **MCTS must use it** — the search already simulates the engine, so if forecasts are
-  real state, rollouts see them; verify the bot dredges defensively ahead of a hit.
+Decisions locked: forecast **cascade hotspots**, **free with every Survey**.
 
-**Checkpoint:** does surveying now feel powerful (not a filler action)? Does ignoring a
-forecast get you punished? Re-sim.
+Shipped:
+- `forecastCascade(g)` (pure, exported): projects next-round depth loss per channel —
+  every live ship route silts, and in Habagat each also drops its downstream neighbours
+  (the cascade). Returns `{ atRisk: [{channel, from, to, drop}] worst-first, critical }`
+  where critical = channels projected to hit 0 (or already ≤ forecastFragileMax).
+- Survey now refreshes `g.forecast` free (gated on `TUNING.forecastOnSurvey`), stamped
+  with the round it predicts + who cast it; the survey log/event carry the read.
+- Board highlights `critical` channels with a dashed red warning pulse, shown for the
+  predicting round and the next (when you act on it), suppressed when stale.
+- **Bot gets it for free**: the mcts clone carries `g.forecast` and its rollouts run the
+  real silt/cascade, so search already values dredging a doomed lifeline.
+- 7 forecast tests: at-risk projection, worst-first sort, critical=death, Habagat drops
+  > Amihan (cascade visible), survey stamps round+surveyor, flag-off no-op, event
+  carries it. 159 total green.
+
+Verified live in-browser: survey in Habagat → next round the board lights the
+threatened channels in dashed red (screenshotted), zero page errors.
+
+**Note:** the cascade-vs-silt split turned out near-useless on a braided board (routes
+already cover all downstream channels), so the forecast was rebuilt around *projected
+depth loss* — which channels DIE — a more honest and useful read than a silt/cascade
+set partition.
+
+**Checkpoint:** ✅ surveying now yields a real board-wide threat read, not filler.
+Ignoring it means shipping into channels you were shown would die. Sim (does the bot
+survey+dredge more in Habagat; win% with forecast on): PENDING before Phase 4.
 
 ## Phase 4 — Bagyo  *(the climax)*
 
