@@ -336,6 +336,10 @@
     100%{opacity:0;transform:scale(1.7)}}
   .fxFade{animation:fxFade .85s ease-out forwards}
   @keyframes fxFade{0%{opacity:.9}100%{opacity:0}}
+  /* Habagat rain: a diagonal streak that falls and resets, offset per-drop so the
+     field shimmers instead of pulsing in lockstep. Slanted to match the drops' angle. */
+  @keyframes rainFall{0%{transform:translate(0,-8px);opacity:0}
+    12%{opacity:.9}88%{opacity:.9}100%{transform:translate(-6px,60px);opacity:0}}
 
   /* Motion sensitivity: effects still convey information, just without travel.
      Turning them off entirely would remove the feedback the user asked for. */
@@ -373,6 +377,8 @@
      the single-season game via .hide. Habagat gets a teal tint, Amihan a warm one. */
   .seasonTag{display:inline-flex;align-items:center;gap:4px;font-weight:600;letter-spacing:.04em}
   .seasonTag .seasonIco{width:14px;height:14px;object-fit:contain;vertical-align:middle}
+  /* Incoming-bagyo tag: a warning colour so the storm reads as a threat in the header. */
+  .stormTag{display:inline-flex;align-items:center;gap:3px;color:var(--warn);font-weight:700}
   /* Desktop: the three buttons sit inline; the hamburger and its menu are hidden. */
   .hdrBtns{display:flex;gap:8px}
   .hdrMenuBtn,.hdrMenu{display:none}

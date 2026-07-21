@@ -122,9 +122,58 @@ export function createFX(overlay, opts = {}) {
     return dur;
   }
 
+  // --- ambient rain (Habagat) ---------------------------------------------
+  // A persistent field of diagonal streaks over the whole board, separate from the
+  // one-shot `live` effects so a render or an effect never clears it. Intensity 0 stops
+  // it; higher values add drops and speed for the bagyo build-up. Each drop is an SVG
+  // line with its own CSS animation, offset by a per-drop delay so the field never
+  // pulses in lockstep. Respects reduced-motion (a light static drizzle, no motion) and
+  // the effects toggle (off = no rain, since it is pure ambience, not information).
+  let rainGroup = null;
+  let rainLevel = 0;
+  const buildRain = (level) => {
+    if (rainGroup) { rainGroup.remove(); rainGroup = null; }
+    if (level <= 0 || !enabled) return;
+    const g = el('g', { class: 'rainField', 'pointer-events': 'none' });
+    const soft = reduced();
+    const count = Math.round((soft ? 18 : 42) * level);       // more drops as the storm nears
+    for (let i = 0; i < count; i++) {
+      // Deterministic-ish scatter from the index so we need no Math.random (kept out of
+      // the engine's replay path anyway); the spread just has to look irregular.
+      const x = ((i * 37.7) % 112) - 6;
+      const y = ((i * 71.3) % 112) - 6;
+      const len = 2.2 + (i % 3) * 0.7;
+      const drop = el('line', {
+        x1: x, y1: y, x2: x - 1.1, y2: y + len,
+        stroke: 'var(--water3, #6cc)', 'stroke-width': 0.18 + level * 0.05,
+        'stroke-linecap': 'round', opacity: 0.28 + level * 0.12,
+      });
+      if (!soft) {
+        drop.style.animation = `rainFall ${(0.7 - level * 0.18).toFixed(2)}s linear ${(i % 10) * 0.08}s infinite`;
+      }
+      g.appendChild(drop);
+    }
+    overlay.appendChild(g);
+    rainGroup = g;
+  };
+
   const api = {
-    setEnabled(v) { enabled = v; },
+    setEnabled(v) {
+      enabled = v;
+      if (!v && rainGroup) { rainGroup.remove(); rainGroup = null; }
+      else if (v && rainLevel > 0) buildRain(rainLevel);
+    },
     get enabled() { return enabled; },
+
+    // Turn the Habagat rain on/off and set how hard it falls (0 = dry, 1 = steady,
+    // up to ~2 as a bagyo closes in). Idempotent: re-setting the same level is a no-op
+    // so a per-render call does not rebuild the field every frame.
+    setRain(level) {
+      const L = Math.max(0, Math.min(2, level));
+      if (L === rainLevel) return;
+      rainLevel = L;
+      buildRain(L);
+    },
 
     clear() { for (const n of live) n.remove(); live.clear(); },
 

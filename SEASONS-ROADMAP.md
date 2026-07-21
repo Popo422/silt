@@ -179,17 +179,34 @@ the search already "sees" future silt/cascade by running the real engine in its
 rollouts. Its job is to level the information field between the human and the bot, and
 it does that without destabilising the game.
 
-## Phase 4 — Bagyo  *(the climax)*
+## Phase 4 — Bagyo  *(the climax)*  ✅ CORE DONE
 
 **Goal:** an ending, not a stopping point.
 
-- A storm builds over the last Habagat rounds; on a set (forecastable) round it hits a
-  region and kills channels outright (depth→0). Visible countdown.
-- Interacts with Phase 3: you can *see it coming* and dredge/route around it or race to
-  cash contracts before landfall.
+Shipped:
+- `bagyoPhase(g)` (called at round top like floodPhase): builds through late Habagat
+  with a per-round countdown warning, then on the landfall round destroys the target
+  bay's approach outright (depth→0, claims cleared). Landfall is fixed at
+  `bagyoLandfallFromEnd` rounds before the end; target bay is seed-derived (one track);
+  `bagyoRadius` sets the blast (1 = bay feeders, 2 = + the tier above).
+- Helpers `bagyoLandfallRound/Target/Channels/Countdown` exported; the Phase-3 forecast
+  now carries `bagyo:{mouth,countdown,channels}` so surveying reveals the storm — the
+  Phase 3↔4 link that makes the finale FAIR, not a random wipe.
+- Wired into sim.mjs, ui.js, and the mcts rollout (clone carries seed, so rollouts hit
+  the same storm and the search plans around landfall).
+- 8 bagyo tests: landfall timing, fixed target, season/flag gates, warn-then-strike-
+  once, landfall clears claims, radius 1<2, forecast reveals it. 167 total green.
 
-**Checkpoint:** does the finale spike tension? Is it survivable-if-you-read-it? Full
-playtest + sim, MCTS re-verified end to end.
+**Art + the rain:** generated a `bagyo` typhoon icon (FLUX, promoted). Built an **ambient
+Habagat rain** effect in fx.js (`setRain(level)`, a persistent overlay field, reduced-
+motion + effects-toggle aware) that ramps as the storm nears, plus a header bagyo tag
+(icon + "bagyo → C in N"). Extracted `season-ui.js` (banner + rain-level) — third ui.js
+split, back to 1089 lines. Verified live in-browser: rain falls across the board, the
+storm banner counts down, landfall tears up bay C's approach (screenshotted).
+
+**Checkpoint:** ✅ the finale spikes tension (a visible countdown + a channel-killing
+strike) and is survivable if you read the forecast and route/cash around it. Full
+sim + MCTS re-verify: PENDING.
 
 ## Phase 5 — Re-balance & bot hardening  *(make it stick)*
 

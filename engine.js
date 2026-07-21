@@ -36,6 +36,15 @@ export const TUNING = {
   // flagged "critical" — a lifeline one hit from dying.
   forecastOnSurvey: true,   // does Survey reveal the next-round silt/cascade forecast?
   forecastFragileMax: 1,    // depth ≤ this among the at-risk set is flagged critical
+  // Phase 4 — the Bagyo (typhoon). Late in Habagat a storm builds visibly and makes
+  // landfall on a fixed round, striking one bay's approach and killing those channels
+  // outright (depth -> 0). It is the finale: forecastable via Tanáw (so you can dredge
+  // a way around or race to cash contracts before it hits), survivable if you read it,
+  // ruinous if you don't. `bagyoLandfallFromEnd` places landfall N rounds before the
+  // game ends; `bagyoRadius` 1 = the target bay's feeder channels, 2 = also one tier up.
+  bagyo: true,              // is there a typhoon climax in Habagat?
+  bagyoLandfallFromEnd: 1,  // landfall this many rounds before the last (0 = final round)
+  bagyoRadius: 2,           // 1 = bay feeders only; 2 = feeders + the tier above them
   startCoins: 8,
   cubesPerNode: 4,          // was 3 — board went dry by R5
   regrowPerRound: 1,        // one upstream node refills each round
@@ -447,7 +456,14 @@ export function forecastCascade(g) {
   const critical = atRisk
     .filter(r => r.to <= 0 || r.from <= TUNING.forecastFragileMax)
     .map(r => r.channel);
-  return { atRisk, critical };
+  // Reading the water also reads the sky: if a bagyo is coming, the forecast names its
+  // target bay, the rounds until landfall, and the channels it will destroy — so a
+  // player can dredge a way around or race to cash contracts there before it hits.
+  const cd = bagyoCountdown(g);
+  const bagyo = cd === null ? null : {
+    mouth: bagyoTarget(g), countdown: cd, channels: bagyoChannels(g, bagyoTarget(g)),
+  };
+  return { atRisk, critical, bagyo };
 }
 
 // How attainable is contract `c` for player p, right now? Higher is better. A
@@ -813,6 +829,72 @@ export function floodPhase(g) {
     + `${raised.length === 1 ? 'channel deepens' : 'channels deepen'}`
     + `${revived.length ? `, ${revived.length} carve back open` : ''}`);
   emit(g, 'flood', { raised, revived });
+}
+
+// --- The Bagyo (Phase 4) --------------------------------------------------
+// A typhoon climax in the wet season. It builds over the last Habagat rounds and makes
+// landfall on a fixed, forecastable round, striking one bay's approach and killing
+// those channels outright. Everything here is a no-op unless seasons AND bagyo are on.
+
+// The round the storm hits: `bagyoLandfallFromEnd` rounds before the game ends.
+export function bagyoLandfallRound() {
+  return totalRounds() - TUNING.bagyoLandfallFromEnd;
+}
+
+// Which bay the storm targets. Chosen deterministically from the seed so it is fixed
+// for a game (a storm has ONE track) and a forecast can name it before it lands.
+export function bagyoTarget(g) {
+  if (!TUNING.seasons || !TUNING.bagyo) return null;
+  return MOUTHS[g.seed % MOUTHS.length];
+}
+
+// The channels the storm destroys: the target bay's feeders, and at radius 2 the tier
+// feeding those (the L-nodes' inbound channels). Returns living channels only.
+export function bagyoChannels(g, mouth) {
+  if (!mouth) return [];
+  const hit = new Set();
+  for (const l of g.inn[mouth]) {
+    const k = chKey(l, mouth);
+    if (g.depth[k] > 0) hit.add(k);
+    if (TUNING.bagyoRadius >= 2) {
+      for (const up of g.inn[l]) { const uk = chKey(up, l); if (g.depth[uk] > 0) hit.add(uk); }
+    }
+  }
+  return [...hit];
+}
+
+// How many rounds until landfall, or 0 on the landfall round, or null if no storm is
+// coming (wrong season/flag, or already past). This is what the forecast and the UI
+// countdown read.
+export function bagyoCountdown(g) {
+  if (!TUNING.seasons || !TUNING.bagyo) return null;
+  const land = bagyoLandfallRound();
+  if (g.round > land || seasonOf(g.round) !== 'habagat') return null;
+  return land - g.round;
+}
+
+// The storm phase. Called at the top of each round (like floodPhase). While the bagyo
+// is building it just logs the countdown; on the landfall round it destroys the target
+// channels outright — depth 0, claims and markers cleared, like any death. A route that
+// depended on them has to go around, and there may be no "around" left.
+export function bagyoPhase(g) {
+  const countdown = bagyoCountdown(g);
+  if (countdown === null) return;
+  const mouth = bagyoTarget(g);
+  if (countdown > 0) {
+    g.log.push(`A bagyo is building — landfall at ${mouth} in ${countdown} `
+      + `${countdown === 1 ? 'round' : 'rounds'}`);
+    emit(g, 'bagyoWarn', { mouth, countdown });
+    return;
+  }
+  // Landfall.
+  const killed = bagyoChannels(g, mouth);
+  for (const k of killed) {
+    g.depth[k] = 0; g.rights[k] = null; g.markers[k] = {}; g.mostRecent[k] = null;
+  }
+  g.log.push(`The bagyo makes landfall at ${mouth} — ${killed.length} `
+    + `${killed.length === 1 ? 'channel is' : 'channels are'} destroyed`);
+  emit(g, 'bagyo', { mouth, killed });
 }
 
 // The neglected-bay premium. After a round resolves, the bay that received the

@@ -13,9 +13,9 @@
 // bots; a full tree can slot in later behind the same interface if needed.
 
 import {
-  execute, siltPhase, floodPhase, bayBonusPhase, regrowPhase, upkeepPhase, seatOrder, score,
-  shipOptions, buildTargets, buildCost, buildStepCost, dredgeTargets, TUNING,
-  totalRounds, seasonOf,
+  execute, siltPhase, floodPhase, bagyoPhase, bayBonusPhase, regrowPhase, upkeepPhase,
+  seatOrder, score, shipOptions, buildTargets, buildCost, buildStepCost, dredgeTargets,
+  TUNING, totalRounds, seasonOf,
 } from './engine.js';
 import { STRATEGIES, chooseTarget, registerMcts } from './ai.js';
 import { chKey } from './graph.js';
@@ -204,6 +204,7 @@ function playoutRestOfTurn(g, me, turn, rand) {
   for (g.round = g.round + 1; g.round <= totalRounds(); g.round++) {
     g.season = seasonOf(g.round);
     floodPhase(g);   // refills the delta on the Amihan->Habagat turn (no-op otherwise)
+    bagyoPhase(g);   // the typhoon builds/strikes so the search plans around landfall
     for (const p of g.players) p.program = normalizeProg(rolloutPolicy(g, p, rand));
     for (let slot = 0; slot < 2; slot++) {
       const claimed = new Set();

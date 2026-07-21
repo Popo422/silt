@@ -1,5 +1,5 @@
 // SILT — headless simulator. Answers the balance questions with numbers.
-import { newGame, execute, siltPhase, floodPhase, bayBonusPhase, regrowPhase, upkeepPhase, score, seatOrder, totalRounds, seasonOf } from './engine.js';
+import { newGame, execute, siltPhase, floodPhase, bagyoPhase, bayBonusPhase, regrowPhase, upkeepPhase, score, seatOrder, totalRounds, seasonOf } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
 import './mcts.js';   // side effect: registers the `mcts` search strategy with ai.js
 import { CHANNELS } from './graph.js';
@@ -11,6 +11,7 @@ export function playGame(strats, seed) {
   for (g.round = 1; g.round <= totalRounds(); g.round++) {
     g.season = seasonOf(g.round);
     floodPhase(g);   // no-op except on the Amihan->Habagat turn
+    bagyoPhase(g);   // builds through late Habagat, strikes on the landfall round
     for (const p of g.players) p.program = STRATEGIES[p.strat](g, p);
     for (let slot = 0; slot < 2; slot++) {
       const claimed = new Set();

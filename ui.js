@@ -1,13 +1,14 @@
 import { NODE_BY_ID } from './graph.js';
 import {
-  newGame, execute, siltPhase, floodPhase, bayBonusPhase, regrowPhase, upkeepPhase, score,
-  seatOrder, buildTargets, dredgeTargets, shipOptions, buildCost, buildStepCost, surveyDrawnFor,
-  TUNING, totalRounds, seasonOf } from './engine.js';
+  newGame, execute, siltPhase, floodPhase, bagyoPhase, bayBonusPhase, regrowPhase, upkeepPhase,
+  score, seatOrder, buildTargets, dredgeTargets, shipOptions, buildCost, buildStepCost,
+  surveyDrawnFor, TUNING, totalRounds, seasonOf } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
 import { setSearchOptions } from './mcts.js';   // registers the `mcts` search strategy + lets us cap its per-move think time
 import { createTutorial, stepText } from './tutorial.js';
 import { createDemo, paintCaption, wireDemo, DEMO_SEED, DEMO_BOTS } from './demo.js';
-import { THEMES, applyTheme, nodeLabel, glossaryHTML, seasonLabel } from './theme.js';
+import { THEMES, applyTheme, nodeLabel, glossaryHTML } from './theme.js';
+import { paintSeasonBanner, rainLevelFor } from './season-ui.js';
 import { pages, createRulebook } from './rulebook.js';
 import { createFX } from './fx.js';
 import { createPanZoom } from './panzoom.js';
@@ -242,18 +243,6 @@ function paintGlossary() {
   if (html) el2.innerHTML = html;
 }
 
-// The season banner. Hidden entirely in the single-season game; with seasons on it
-// names the current half (Amihan dry / Habagat wet) beside its icon, so the player
-// always knows which game they are in — and, in Habagat, that silt now cascades.
-function paintSeasonBanner() {
-  const tag = $('seasonTag');
-  if (!tag) return;
-  if (!TUNING.seasons || !g) { tag.classList.add('hide'); return; }
-  const wet = g.season === 'habagat';
-  tag.classList.remove('hide');
-  tag.innerHTML = ` · ${icon(wet ? 'season-habagat' : 'season-amihan', 'seasonIco')}`
-    + seasonLabel(T, g.season);
-}
 
 // ---------------------------------------------------------------- rulebook
 
@@ -411,7 +400,8 @@ function render() {
     artImage, ico, nodeLabel, ART,
   });
   $('rd').textContent = `${T.terms.round.name} ${g.round} / ${totalRounds()}`;
-  paintSeasonBanner();
+  paintSeasonBanner({ $, icon, g, T });
+  fx.setRain(rainLevelFor(g));   // Habagat rain, heavier as a bagyo nears; 0 when dry
   $('ph').textContent = pendingAction
     ? (T.id === 'anod' ? 'Pumili' : 'Choose a target')
     : (T.id === 'anod' ? 'Magplano' : 'Program');
@@ -986,11 +976,11 @@ async function endRound() {
   if (g.round >= totalRounds()) return finish();
   g.round++;
   g.season = seasonOf(g.round);
-  // The flood is the season's opening beat: on the Amihan->Habagat turn the delta
-  // refills. Give it its own flush so the water visibly comes back (mirrors how the
-  // silt sweep gets its own beat above). A no-op on every other round.
-  floodPhase(g);
-  await flush();
+  // The season's opening beats, each with its own flush so it lands visibly: the flood
+  // refills the delta on the Amihan->Habagat turn, then the bagyo builds (or strikes)
+  // through late Habagat. Both no-ops on ordinary rounds.
+  floodPhase(g); await flush();
+  bagyoPhase(g); await flush();
   // NOTE: committedThisRound deliberately stays true here. The programs remain
   // face-up while you plan the next round, because "what did everyone just do"
   // is the main input to that decision. It flips back to false on the next

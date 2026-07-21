@@ -39,4 +39,5 @@ export const ART = {
   'season-habagat': './assets/art/season-habagat.png',
   'flood-surge':    './assets/art/flood-surge.png',
   'anod-cascade':   './assets/art/anod-cascade.png',
+  bagyo:            './assets/art/bagyo.png',
 };

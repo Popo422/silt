@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
-  newGame, execute, siltPhase, floodPhase, bayBonusPhase, regrowPhase, upkeepPhase, seatOrder,
-  score, totalRounds, seasonOf, isSeasonTurn, forecastCascade, TUNING,
+  newGame, execute, siltPhase, floodPhase, bagyoPhase, bayBonusPhase, regrowPhase, upkeepPhase,
+  seatOrder, score, totalRounds, seasonOf, isSeasonTurn, forecastCascade,
+  bagyoLandfallRound, bagyoTarget, bagyoChannels, bagyoCountdown, TUNING,
 } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
 import { chKey } from './graph.js';
@@ -625,6 +626,122 @@ describe('season plumbing (Phase 0)', () => {
       const ev = g.events.find(e => e.type === 'survey');
       expect(ev.forecast).toBeTruthy();
       expect(Array.isArray(ev.forecast.critical)).toBe(true);
+    });
+  });
+
+  // Phase 4 — the Bagyo. A forecastable typhoon that builds through late Habagat and
+  // makes landfall on a fixed round, destroying one bay's approach outright. These pin
+  // the timing, the fixed target, the build-then-strike behaviour, the season/flag
+  // gates, and the forecast link that makes it fair.
+  describe('the bagyo (Phase 4)', () => {
+    const KEYS = ['seasons', 'roundsPerSeason', 'bagyo', 'bagyoLandfallFromEnd',
+      'bagyoRadius', 'forecastOnSurvey'];
+    let saved;
+    const snap = () => { saved = Object.fromEntries(KEYS.map(k => [k, TUNING[k]])); };
+    afterEach(() => { if (saved) for (const k of KEYS) TUNING[k] = saved[k]; });
+
+    const atRound = (round, seed = 5) => {
+      const g = newGame(3, seed);
+      g.round = round; g.season = seasonOf(round);
+      g.events = [];
+      return g;
+    };
+
+    it('landfall is bagyoLandfallFromEnd rounds before the end', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.bagyo = true;
+      TUNING.bagyoLandfallFromEnd = 1;
+      expect(bagyoLandfallRound()).toBe(totalRounds() - 1);   // 11 of 12
+      TUNING.bagyoLandfallFromEnd = 0;
+      expect(bagyoLandfallRound()).toBe(totalRounds());       // the final round
+    });
+
+    it('targets a fixed bay for a given seed (a storm has one track)', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.bagyo = true;
+      const g = atRound(8);
+      const t1 = bagyoTarget(g), t2 = bagyoTarget(g);
+      expect(t1).toBe(t2);
+      expect(['A', 'B', 'C']).toContain(t1);
+    });
+
+    it('is inert with seasons off or bagyo off', () => {
+      snap();
+      TUNING.seasons = false; TUNING.bagyo = true;
+      expect(bagyoTarget(atRound(8))).toBeNull();
+      expect(bagyoCountdown(atRound(8))).toBeNull();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.bagyo = false;
+      expect(bagyoCountdown(atRound(8))).toBeNull();
+    });
+
+    it('only counts down during Habagat, never in Amihan', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.bagyo = true;
+      expect(bagyoCountdown(atRound(3))).toBeNull();          // amihan
+      expect(bagyoCountdown(atRound(7))).toBeGreaterThan(0);  // habagat, building
+    });
+
+    it('warns (no damage) before landfall, then strikes exactly once', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.bagyo = true;
+      TUNING.bagyoLandfallFromEnd = 1;   // landfall at 11
+      let strikes = 0, warns = 0;
+      const g = newGame(3, 5);
+      for (let r = 7; r <= 12; r++) {
+        g.round = r; g.season = seasonOf(r); g.events = [];
+        const aliveBefore = Object.values(g.depth).filter(d => d > 0).length;
+        bagyoPhase(g);
+        const aliveAfter = Object.values(g.depth).filter(d => d > 0).length;
+        const ev = g.events[0];
+        if (ev?.type === 'bagyoWarn') { warns++; expect(aliveAfter).toBe(aliveBefore); }
+        if (ev?.type === 'bagyo') { strikes++; expect(aliveAfter).toBeLessThan(aliveBefore); }
+      }
+      expect(warns).toBe(4);     // rounds 7,8,9,10
+      expect(strikes).toBe(1);   // round 11 only
+    });
+
+    it('landfall destroys the target bay approach and clears its claims', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.bagyo = true;
+      TUNING.bagyoLandfallFromEnd = 1; TUNING.bagyoRadius = 2;
+      const g = atRound(bagyoLandfallRound());
+      const mouth = bagyoTarget(g);
+      const doomed = bagyoChannels(g, mouth);
+      expect(doomed.length).toBeGreaterThan(0);
+      // Stamp ownership on a doomed channel — it must be cleared on the strike.
+      g.rights[doomed[0]] = 1; g.markers[doomed[0]] = { 1: 2 };
+      bagyoPhase(g);
+      for (const k of doomed) expect(g.depth[k]).toBe(0);
+      expect(g.rights[doomed[0]]).toBeNull();
+      expect(g.markers[doomed[0]]).toEqual({});
+    });
+
+    it('radius 1 hits fewer channels than radius 2', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.bagyo = true;
+      const g = atRound(bagyoLandfallRound());
+      const mouth = bagyoTarget(g);
+      TUNING.bagyoRadius = 1;
+      const r1 = bagyoChannels(g, mouth).length;
+      TUNING.bagyoRadius = 2;
+      const r2 = bagyoChannels(g, mouth).length;
+      expect(r2).toBeGreaterThanOrEqual(r1);
+      expect(r1).toBeGreaterThan(0);
+    });
+
+    it('the forecast reveals the storm — bay, countdown, and doomed channels', () => {
+      snap();
+      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.bagyo = true;
+      TUNING.forecastOnSurvey = true;
+      const g = atRound(8);
+      const fc = forecastCascade(g);
+      expect(fc.bagyo).toBeTruthy();
+      expect(fc.bagyo.mouth).toBe(bagyoTarget(g));
+      expect(fc.bagyo.countdown).toBe(bagyoCountdown(g));
+      expect(fc.bagyo.channels.length).toBeGreaterThan(0);
+      // No storm in the dry season.
+      const dry = newGame(3, 5); dry.round = 3; dry.season = 'amihan';
+      expect(forecastCascade(dry).bagyo).toBeNull();
     });
   });
 });

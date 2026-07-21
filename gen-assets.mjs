@@ -446,6 +446,11 @@ const BATCHES = {
       // Cascading Anod — sediment rolling downstream, the wet-season silt.
       'anod-cascade':   ICON('plumes of brown silt drifting downstream through a river '
         + 'channel, sediment clouds carried by the current, ochre and brown'),
+      // The Bagyo — the typhoon climax. A spiralling storm bearing down on the coast.
+      'bagyo':          ICON('a spiralling typhoon storm system seen from above, thick '
+        + 'curved cloud bands around a dark eye, teal grey and white'),
+      'bagyo-warn':     ICON('a single warning storm cloud with a lightning bolt, '
+        + 'ominous and simple, grey and gold'),
     },
   },
 };
