@@ -46,14 +46,24 @@ export const TUNING = {
   // ~0.1, spread ~15). Cascade stays here for a shorter variant or a larger future map.
   cascadeAnod: false,       // does silt cascade downstream in Habagat?
   cascadeDrop: 1,           // depth a downstream channel loses from an upstream silting
-  // Phase 3 — Tanáw forecasts. Surveying reveals which channels the coming round is
-  // most likely to silt (this round's ship routes) or cascade into (their downstream
-  // neighbours, in Habagat). The read is what makes the wet season skill, not dice:
-  // you can see the water about to choke and dredge/route around it. Free with every
-  // Survey. `forecastFragileMax` is the depth at/below which a threatened channel is
-  // flagged "critical" — a lifeline one hit from dying.
-  forecastOnSurvey: true,   // does Survey reveal the next-round silt/cascade forecast?
-  forecastFragileMax: 1,    // depth ≤ this among the at-risk set is flagged critical
+  // Hukay tokens. Surveying is the game's "look at the water" action; it now also hands
+  // you a hukay (shovel) — a banked, consumable dredge charge. Spend one while dredging
+  // (still paying the normal dredge gold) and it does one of two things depending on the
+  // channel:
+  //   • a DEAD channel (depth 0) — which a normal dredge cannot touch at all — is REVIVED
+  //     to hukayReviveTo (depth 1). This is the only way to break the game's hardest rule,
+  //     "a channel that runs dry is gone for good": you earn the shovel, you claw a
+  //     lifeline back from the grave.
+  //   • a LIVING channel gets the bigger bite, +hukayDredgeBonus on top of the normal
+  //     dredgeAmount (so +2 instead of +1).
+  // It ties the two non-scoring actions together — Survey feeds Dredge — and gives the
+  // river-repair line a real power move and a comeback tool, which is what the old
+  // forecast highlight reached for but could never deliver (you cannot act on a warning
+  // about what other players might freely choose to do).
+  hukayFromSurvey: true,    // does Survey grant a hukay token?
+  hukayMax: 3,              // most tokens a player can bank (no infinite hoarding)
+  hukayDredgeBonus: 1,      // extra depth a spent token adds on a LIVING channel (+1 → +2)
+  hukayReviveTo: 1,         // depth a spent token restores a DEAD (depth 0) channel to
   // Phase 4 — the Bagyo (typhoon). Late in Habagat a storm builds visibly and makes
   // landfall on a fixed round, striking one bay's approach and killing those channels
   // outright (depth -> 0). It is the finale: forecastable via Tanáw (so you can dredge
@@ -259,6 +269,7 @@ export function newGame(playerCount = 3, seed = 12345) {
       done: [],
       delivered: {},           // mouth -> {timber,grain,salt} — permanent, scores majorities
       pool: {},                // mouth -> {timber,grain,salt} — spendable on contracts
+      hukay: 0,                // banked hukay (shovel) tokens, from Survey; spent on Dredge
       program: [null, null],
     });
   }
@@ -293,9 +304,6 @@ export function newGame(playerCount = 3, seed = 12345) {
     // last round's neglect: { mouth, amount }, or null if none / already claimed.
     bayThisRound: Object.fromEntries(MOUTHS.map(m => [m, 0])),
     bayBonus: null,
-    // Tanáw forecast (Phase 3): { silt, cascade, critical, round, by } after a Survey,
-    // else null. The UI highlights it only while it names the current round.
-    forecast: null,
   };
 }
 
@@ -442,51 +450,6 @@ export function shipOptions(g, p) {
   return opts;
 }
 
-// The Tanáw forecast (Phase 3): which channels the COMING round is most likely to
-// choke, and by how much. It reads the board as it stands — every player's live ship
-// routes are the channels apt to silt next; in Habagat each such channel ALSO drops its
-// downstream neighbours (the cascade). It sums the projected loss per channel, so a
-// channel on many routes, or both shipped-through AND cascaded-into, reads as more
-// endangered. A projection of the current position, not a guarantee (people can route
-// elsewhere) — but exactly the read the wet season rewards: see the water about to
-// close and dredge or re-route before it does.
-//
-// Pure: reads stations/cubes/depth/season, mutates nothing. Returns
-//   { atRisk: [{channel, from, to, drop}], critical: [chKey] }
-// sorted worst-first (biggest projected drop). `critical` = channels the forecast
-// projects to DIE (reach depth 0) or already at/below forecastFragileMax. Exported so
-// the UI highlight and the bot share one definition of "at risk".
-export function forecastCascade(g) {
-  const loss = {};   // chKey -> projected depth lost next round
-  const add = (k, amt) => { if (g.depth[k] > 0) loss[k] = (loss[k] ?? 0) + amt; };
-  const wet = TUNING.cascadeAnod && seasonOf(g.round) === 'habagat';
-  for (const p of g.players) {
-    for (const o of shipOptions(g, p)) {
-      for (const k of o.path) {
-        add(k, TUNING.siltPerShip);
-        if (wet) {                                  // cascade to downstream neighbours
-          const mid = k.split('>')[1];
-          for (const nx of (g.out[mid] ?? [])) add(chKey(mid, nx), TUNING.cascadeDrop);
-        }
-      }
-    }
-  }
-  const atRisk = Object.entries(loss).map(([channel, drop]) => ({
-    channel, from: g.depth[channel], to: Math.max(0, g.depth[channel] - drop), drop,
-  })).sort((a, b) => (b.drop - a.drop) || (a.to - b.to));
-  const critical = atRisk
-    .filter(r => r.to <= 0 || r.from <= TUNING.forecastFragileMax)
-    .map(r => r.channel);
-  // Reading the water also reads the sky: if a bagyo is coming, the forecast names its
-  // target bay, the rounds until landfall, and the channels it will destroy — so a
-  // player can dredge a way around or race to cash contracts there before it hits.
-  const cd = bagyoCountdown(g);
-  const bagyo = cd === null ? null : {
-    mouth: bagyoTarget(g), countdown: cd, channels: bagyoChannels(g, bagyoTarget(g)),
-  };
-  return { atRisk, critical, bagyo };
-}
-
 // How attainable is contract `c` for player p, right now? Higher is better. A
 // contract is only worth its points if p can actually deliver what it asks: the
 // right goods, to the bay it names, along a route that still reaches the sea.
@@ -598,9 +561,22 @@ export function execute(g, pi, action, choice, claimed) {
   switch (action) {
     case 'dredge': {
       const k = choice?.channel;
-      if (!k || g.depth[k] <= 0 || g.depth[k] >= TUNING.maxDepth) {
+      // A hukay (shovel) token turns dredge into a power move: it is the ONLY thing that
+      // can touch a dead (depth 0) channel — reviving it — and it deepens a living channel
+      // harder. It is spent only if the player actually holds one and asked to use it.
+      const useHukay = !!(choice?.useHukay && p.hukay > 0);
+      if (!k) {
         g.log.push(`${p.name} tried to dredge but had no channel to work on`);
-        emit(g, 'fizzle', { pi, action, channel: k ?? null });
+        emit(g, 'fizzle', { pi, action, channel: null });
+        return;
+      }
+      const dead = g.depth[k] <= 0;
+      // Without a token: a full channel and a dead channel are both no-ops (nothing to
+      // deepen / nothing left to deepen). With a token: a dead channel is the whole point,
+      // but a full one is still a waste.
+      if (g.depth[k] >= TUNING.maxDepth || (dead && !useHukay)) {
+        g.log.push(`${p.name} tried to dredge but had no channel to work on`);
+        emit(g, 'fizzle', { pi, action, channel: k });
         return;
       }
       if (p.coins < TUNING.dredgeCoins) {
@@ -610,7 +586,17 @@ export function execute(g, pi, action, choice, claimed) {
       }
       p.coins -= TUNING.dredgeCoins;
       const before = g.depth[k];
-      g.depth[k] = Math.min(TUNING.maxDepth, g.depth[k] + TUNING.dredgeAmount);
+      let hukayNote = '';
+      if (useHukay) {
+        p.hukay -= 1;
+        // Dead bed → revive to a foothold; living channel → the bigger bite.
+        g.depth[k] = dead
+          ? TUNING.hukayReviveTo
+          : Math.min(TUNING.maxDepth, g.depth[k] + TUNING.dredgeAmount + TUNING.hukayDredgeBonus);
+        hukayNote = dead ? ' — hukay revives a dead channel!' : ' — hukay digs deep';
+      } else {
+        g.depth[k] = Math.min(TUNING.maxDepth, g.depth[k] + TUNING.dredgeAmount);
+      }
 
       // Leave a marker and recompute ownership from marker counts. Ownership is
       // no longer "whoever dredged last" — it is whoever has the most presence on
@@ -630,8 +616,11 @@ export function execute(g, pi, action, choice, claimed) {
       }
       const mine = g.markers[k][pi] ?? 0;
       g.log.push(`${p.name} dredges ${k} to depth ${g.depth[k]}, pays ${TUNING.dredgeCoins} gold`
-        + `${claim}${mine > 1 ? ` (${mine} markers)` : ''}`);
-      emit(g, 'dredge', { pi, channel: k, from: before, to: g.depth[k], claimed: claimed_ });
+        + `${hukayNote}${claim}${mine > 1 ? ` (${mine} markers)` : ''}`);
+      emit(g, 'dredge', {
+        pi, channel: k, from: before, to: g.depth[k], claimed: claimed_,
+        hukay: useHukay, revived: useHukay && dead,
+      });
       break;
     }
     case 'build': {
@@ -749,22 +738,19 @@ export function execute(g, pi, action, choice, claimed) {
         }
         for (const c of drawn) if (c !== keep) g.deck.unshift(c);
       }
-      // Tanáw reads the water: refresh the forecast of what the coming round will
-      // choke. Stored on the game so the board can highlight it and it survives until
-      // the next round's actions overwrite it. Free with every Survey.
-      let fc = null;
-      if (TUNING.forecastOnSurvey) {
-        fc = forecastCascade(g);
-        // Stamped with the round whose end-of-round silt it predicts (this one). The UI
-        // keeps showing it into the NEXT round too (see board.js) — that is when you act
-        // on the read, dredging or re-routing around the channels it warned would die.
-        g.forecast = { ...fc, round: g.round, by: pi };
+      // Surveying also hands you a hukay (shovel): a banked, consumable dredge charge you
+      // spend later to power-dredge a living channel (+2) or revive a dead one (depth 0 →
+      // 1). Capped so tokens can't be hoarded forever. This is the reward that makes
+      // Survey a setup move, not just a gold-and-a-card top-up.
+      let gotHukay = false;
+      if (TUNING.hukayFromSurvey && p.hukay < TUNING.hukayMax) {
+        p.hukay += 1;
+        gotHukay = true;
       }
-      const risk = fc ? fc.atRisk.length : 0;
       g.log.push(`${p.name} surveys, takes ${TUNING.surveyCoins} gold${keptName}`
-        + `${fc ? ` — reads the water: ${risk} channel${risk === 1 ? '' : 's'} at risk`
-          + `${fc.critical.length ? `, ${fc.critical.length} may die` : ''}` : ''}`);
-      emit(g, 'survey', { pi, coins: TUNING.surveyCoins, drew: drawn.length, forecast: fc });
+        + `${gotHukay ? ` — and earns a hukay (${p.hukay} banked)`
+          : (TUNING.hukayFromSurvey ? ' — hukay bank is full' : '')}`);
+      emit(g, 'survey', { pi, coins: TUNING.surveyCoins, drew: drawn.length, hukay: p.hukay, gotHukay });
       break;
     }
   }

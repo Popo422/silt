@@ -131,15 +131,29 @@ export const AMBIENT = [
 // most instructive beats sit at the top.
 export const REACTIVE = [
   {
+    // Higher priority than first-death: a revive is the rarer, more instructive event —
+    // it is the one thing that undoes the "gone for good" rule, so point at it first.
+    id: 'first-revive',
+    once: true,
+    when: (ev) => ev.type === 'dredge' && ev.revived,
+    kicker: 'Back from the dead',
+    title: () => 'A dead channel just came back',
+    body: (T) => `That is a hukay being spent — a shovel earned by surveying. A dead `
+        + `channel is normally gone for the rest of the game, and this is the ONLY thing `
+        + `that reverses it: dredge with a hukay in hand and the bed refills to depth one. `
+        + `Watch who does this — it means they read the water and saved a route everyone `
+        + `else wrote off.`,
+  },
+  {
     id: 'first-death',
     once: true,
     when: (ev) => ev.type === 'silt' && (ev.dropped ?? []).some(d => d.to === 0),
     kicker: 'A channel just died',
-    title: () => 'And that water is gone for good',
-    body: (T) => `Down to zero — and here is the part that hurts: we cannot dredge it `
-        + `back. ${actName(T, 'dredge')} deepens water that still exists, and there is `
-        + `nothing left to deepen. Everybody who was using that route goes around now, `
-        + `for the rest of the game.`,
+    title: () => 'And that water is gone for good — unless someone has a shovel',
+    body: (T) => `Down to zero. Normally that is permanent: ${actName(T, 'dredge')} `
+        + `deepens water that still exists, and there is nothing left to deepen. The one `
+        + `exception is a hukay — earned by surveying — which can revive it. Short of that, `
+        + `everybody who used that route goes around now, for the rest of the game.`,
   },
   {
     id: 'first-toll',

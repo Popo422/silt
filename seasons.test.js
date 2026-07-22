@@ -1,11 +1,11 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   newGame, execute, siltPhase, floodPhase, bagyoPhase, bayBonusPhase, regrowPhase, upkeepPhase,
-  seatOrder, score, totalRounds, seasonOf, isSeasonTurn, forecastCascade,
+  seatOrder, score, totalRounds, seasonOf, isSeasonTurn,
   bagyoLandfallRound, bagyoTarget, bagyoChannels, bagyoCountdown, TUNING,
 } from './engine.js';
 import { STRATEGIES, chooseTarget } from './ai.js';
-import { chKey } from './graph.js';
+import { chKey, MOUTHS } from './graph.js';
 // Importing setSearchOptions also runs mcts.js for its side effect (registering the
 // `mcts` strategy with ai.js), so the integration game below can use the search bot.
 import { setSearchOptions } from './mcts.js';
@@ -552,99 +552,157 @@ describe('season plumbing (Phase 0)', () => {
     });
   });
 
-  // Phase 3 — Tanáw forecasts. Surveying reads the water: g.forecast lists the channels
-  // the coming round is projected to choke, worst-first, with the death-bound ones
-  // flagged critical. These pin the projection, the season sensitivity (cascade only in
-  // Habagat inflates the drops), the freshness stamp, and the survey wiring.
-  describe('tanáw forecast (Phase 3)', () => {
-    const KEYS = ['seasons', 'roundsPerSeason', 'cascadeAnod', 'cascadeDrop',
-      'siltPerShip', 'forecastOnSurvey', 'forecastFragileMax'];
+  // Hukay tokens. Surveying now also banks a shovel; a shovel spent while dredging digs a
+  // living channel deep (+2) or REVIVES a dead one (depth 0 -> 1), the only way to undo
+  // the game's one permanent loss. These pin the grant + cap, both spend modes, the guard
+  // rails (no token / full / affordability), and that bots know how to use them.
+  describe('hukay tokens', () => {
+    const KEYS = ['hukayFromSurvey', 'hukayMax', 'hukayDredgeBonus', 'hukayReviveTo',
+      'dredgeAmount', 'dredgeCoins', 'maxDepth', 'handLimit', 'rightsEnabled'];
     let saved;
     const snap = () => { saved = Object.fromEntries(KEYS.map(k => [k, TUNING[k]])); };
     afterEach(() => { if (saved) for (const k of KEYS) TUNING[k] = saved[k]; });
 
-    // A wet-season game with some channels worn down so the forecast has teeth.
-    const wornHabagat = (seed = 5) => {
-      const g = newGame(3, seed);
-      g.round = 8; g.season = 'habagat';
-      Object.keys(g.depth).slice(0, 8).forEach(k => { g.depth[k] = 1; });
-      return g;
+    // Give player p a specific channel adjacent to its first station, set to a depth, and
+    // return its key — so a test can aim a dredge/revive at a channel it controls.
+    const adjChannel = (g, pi) => {
+      const s = g.players[pi].stations[0];
+      const nb = g.out[s]?.[0];
+      return chKey(s, nb);
     };
 
-    it('flags channels on live ship routes as at-risk', () => {
+    it('a Survey grants one hukay, and it is capped at hukayMax', () => {
       snap();
-      TUNING.seasons = true; TUNING.roundsPerSeason = 6;
-      const g = wornHabagat();
-      const fc = forecastCascade(g);
-      expect(fc.atRisk.length).toBeGreaterThan(0);
-      // Every at-risk entry is a real, still-living channel with a projected drop.
-      for (const r of fc.atRisk) {
-        expect(g.depth[r.channel]).toBeGreaterThan(0);
-        expect(r.drop).toBeGreaterThan(0);
-        expect(r.to).toBe(Math.max(0, r.from - r.drop));
-      }
+      const g = newGame(3, 5);
+      expect(g.players[0].hukay).toBe(0);
+      for (let i = 0; i < TUNING.hukayMax + 2; i++) execute(g, 0, 'survey', {}, new Set());
+      expect(g.players[0].hukay).toBe(TUNING.hukayMax);
     });
 
-    it('is sorted worst-first by projected drop', () => {
+    it('with hukayFromSurvey off, a Survey grants no token', () => {
       snap();
-      TUNING.seasons = true; TUNING.roundsPerSeason = 6;
-      const fc = forecastCascade(wornHabagat());
-      for (let i = 1; i < fc.atRisk.length; i++) {
-        expect(fc.atRisk[i - 1].drop).toBeGreaterThanOrEqual(fc.atRisk[i].drop);
-      }
-    });
-
-    it('marks a channel projected to reach depth 0 as critical', () => {
-      snap();
-      TUNING.seasons = true; TUNING.roundsPerSeason = 6;
-      const fc = forecastCascade(wornHabagat());
-      for (const r of fc.atRisk) {
-        if (r.to <= 0) expect(fc.critical).toContain(r.channel);
-      }
-      // And there IS at least one death projected on a worn wet-season board.
-      expect(fc.critical.length).toBeGreaterThan(0);
-    });
-
-    it('projects bigger drops in Habagat than Amihan (the cascade is visible)', () => {
-      snap();
-      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.cascadeAnod = true;
-      const wet = forecastCascade(wornHabagat());
-      const dryG = newGame(3, 5); dryG.round = 2; dryG.season = 'amihan';
-      Object.keys(dryG.depth).slice(0, 8).forEach(k => { dryG.depth[k] = 1; });
-      const dry = forecastCascade(dryG);
-      const maxDrop = (fc) => Math.max(0, ...fc.atRisk.map(r => r.drop));
-      expect(maxDrop(wet)).toBeGreaterThan(maxDrop(dry));
-    });
-
-    it('a Survey stamps g.forecast with the current round and surveyor', () => {
-      snap();
-      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.forecastOnSurvey = true;
-      const g = wornHabagat();
-      expect(g.forecast).toBeNull();
-      execute(g, 1, 'survey', {}, new Set());
-      expect(g.forecast).not.toBeNull();
-      expect(g.forecast.round).toBe(g.round);
-      expect(g.forecast.by).toBe(1);
-      expect(Array.isArray(g.forecast.atRisk)).toBe(true);
-    });
-
-    it('with forecastOnSurvey off, a Survey leaves g.forecast untouched', () => {
-      snap();
-      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.forecastOnSurvey = false;
-      const g = wornHabagat();
+      TUNING.hukayFromSurvey = false;
+      const g = newGame(3, 5);
       execute(g, 0, 'survey', {}, new Set());
-      expect(g.forecast).toBeNull();
+      expect(g.players[0].hukay).toBe(0);
     });
 
-    it('the survey event carries the forecast for the UI', () => {
+    it('a hukay spent on a LIVING channel digs +2 and is consumed', () => {
       snap();
-      TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.forecastOnSurvey = true;
-      const g = wornHabagat();
-      g.events = [];
+      const g = newGame(3, 5);
+      const p = g.players[0];
+      p.hukay = 1; p.coins = 10;
+      const k = adjChannel(g, 0);
+      g.depth[k] = 1;
+      execute(g, 0, 'dredge', { channel: k, useHukay: true }, new Set());
+      expect(g.depth[k]).toBe(1 + TUNING.dredgeAmount + TUNING.hukayDredgeBonus); // 1+1+1=3
+      expect(p.hukay).toBe(0);
+    });
+
+    it('a hukay REVIVES a dead channel to hukayReviveTo — the only way back', () => {
+      snap();
+      const g = newGame(3, 5);
+      const p = g.players[0];
+      p.hukay = 1; p.coins = 10;
+      const k = adjChannel(g, 0);
+      g.depth[k] = 0;
+      // Without a token, a dead channel is untouchable (control: no token).
+      const g2 = newGame(3, 5); g2.players[0].coins = 10;
+      const k2 = adjChannel(g2, 0); g2.depth[k2] = 0;
+      execute(g2, 0, 'dredge', { channel: k2, useHukay: true }, new Set());
+      expect(g2.depth[k2]).toBe(0); // no token held -> fizzle, stays dead
+      // With a token, it revives.
+      execute(g, 0, 'dredge', { channel: k, useHukay: true }, new Set());
+      expect(g.depth[k]).toBe(TUNING.hukayReviveTo);
+      expect(p.hukay).toBe(0);
+    });
+
+    it('a normal dredge (no useHukay) never spends a token', () => {
+      snap();
+      const g = newGame(3, 5);
+      const p = g.players[0];
+      p.hukay = 2; p.coins = 10;
+      const k = adjChannel(g, 0);
+      g.depth[k] = 1;
+      execute(g, 0, 'dredge', { channel: k }, new Set());
+      expect(g.depth[k]).toBe(1 + TUNING.dredgeAmount); // +1 only
+      expect(p.hukay).toBe(2);                          // untouched
+    });
+
+    it('useHukay is ignored when the player holds no token (living channel +1, dead stays dead)', () => {
+      snap();
+      const g = newGame(3, 5);
+      const p = g.players[0];
+      p.hukay = 0; p.coins = 10;
+      const k = adjChannel(g, 0);
+      g.depth[k] = 1;
+      execute(g, 0, 'dredge', { channel: k, useHukay: true }, new Set());
+      expect(g.depth[k]).toBe(1 + TUNING.dredgeAmount); // plain dredge, token-less
+      expect(p.hukay).toBe(0);
+    });
+
+    it('a power-dredge respects maxDepth and still spends the token', () => {
+      snap();
+      const g = newGame(3, 5);
+      const p = g.players[0];
+      p.hukay = 1; p.coins = 10;
+      const k = adjChannel(g, 0);
+      g.depth[k] = TUNING.maxDepth - 1;                 // +2 would overshoot the cap
+      execute(g, 0, 'dredge', { channel: k, useHukay: true }, new Set());
+      expect(g.depth[k]).toBe(TUNING.maxDepth);         // clamped, not over
+      expect(p.hukay).toBe(0);                          // token still consumed
+    });
+
+    it('cannot afford the dredge gold: token is NOT spent and the channel is unchanged', () => {
+      snap();
+      const g = newGame(3, 5);
+      const p = g.players[0];
+      p.hukay = 1; p.coins = 0;                         // broke
+      const k = adjChannel(g, 0);
+      g.depth[k] = 0;
+      execute(g, 0, 'dredge', { channel: k, useHukay: true }, new Set());
+      expect(g.depth[k]).toBe(0);                       // revive never happened
+      expect(p.hukay).toBe(1);                          // token preserved
+    });
+
+    it('the dredge event reports hukay use and revival', () => {
+      snap();
+      const g = newGame(3, 5);
+      const p = g.players[0];
+      p.hukay = 1; p.coins = 10; g.events = [];
+      const k = adjChannel(g, 0);
+      g.depth[k] = 0;
+      execute(g, 0, 'dredge', { channel: k, useHukay: true }, new Set());
+      const ev = g.events.find(e => e.type === 'dredge');
+      expect(ev.hukay).toBe(true);
+      expect(ev.revived).toBe(true);
+    });
+
+    it('a full hand still earns the token (the draw is discarded, not the shovel)', () => {
+      snap();
+      const g = newGame(3, 5);
+      const p = g.players[0];
+      p.contracts = Array.from({ length: TUNING.handLimit }, () => ({ kind: 'timber', vp: 5, need: {} }));
       execute(g, 0, 'survey', {}, new Set());
-      const ev = g.events.find(e => e.type === 'survey');
-      expect(ev.forecast).toBeTruthy();
-      expect(Array.isArray(ev.forecast.critical)).toBe(true);
+      expect(p.hukay).toBe(1);
+      expect(p.contracts.length).toBe(TUNING.handLimit); // no card kept, hand unchanged
+    });
+
+    it('a bot facing a stranded station surveys for / spends a hukay to reconnect', () => {
+      snap();
+      // Marooned setup: kill every channel out of a station, leave one dead one that a
+      // revive would reopen, and hand the bot a token — chooseTarget should aim to revive.
+      const g = newGame(3, 7);
+      const p = g.players[0];
+      p.hukay = 1; p.coins = 10;
+      const s = p.stations[0];
+      const outs = g.out[s] ?? [];
+      // Kill all outgoing channels; the first becomes the dead one we can revive.
+      for (const nb of outs) g.depth[chKey(s, nb)] = 0;
+      const choice = chooseTarget(g, p, 'dredge', 'smart');
+      // The bot picks a channel and, if it is one of the dead outgoing ones, spends a token.
+      expect(choice).not.toBeNull();
+      if (choice && g.depth[choice.channel] === 0) expect(choice.useHukay).toBe(true);
     });
   });
 
@@ -748,19 +806,18 @@ describe('season plumbing (Phase 0)', () => {
       expect(r1).toBeGreaterThan(0);
     });
 
-    it('the forecast reveals the storm — bay, countdown, and doomed channels', () => {
+    it('the storm is knowable in advance — target bay, countdown, and doomed channels', () => {
       snap();
       TUNING.seasons = true; TUNING.roundsPerSeason = 6; TUNING.bagyo = true;
-      TUNING.forecastOnSurvey = true;
       const g = atRound(8);
-      const fc = forecastCascade(g);
-      expect(fc.bagyo).toBeTruthy();
-      expect(fc.bagyo.mouth).toBe(bagyoTarget(g));
-      expect(fc.bagyo.countdown).toBe(bagyoCountdown(g));
-      expect(fc.bagyo.channels.length).toBeGreaterThan(0);
+      // A storm is building: it has a fixed target bay, a positive countdown, and a
+      // concrete set of channels it will destroy — all readable before landfall.
+      expect(bagyoCountdown(g)).toBeGreaterThan(0);
+      expect(MOUTHS).toContain(bagyoTarget(g));
+      expect(bagyoChannels(g, bagyoTarget(g)).length).toBeGreaterThan(0);
       // No storm in the dry season.
       const dry = newGame(3, 5); dry.round = 3; dry.season = 'amihan';
-      expect(forecastCascade(dry).bagyo).toBeNull();
+      expect(bagyoCountdown(dry)).toBeNull();
     });
   });
 });

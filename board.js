@@ -292,17 +292,11 @@ export function drawBoard(ctx) {
   // through — and therefore what each choice will silt.
   const destMouths = new Set((routes ?? []).map(r => r.mouth));
 
-  // Tanáw forecast (Phase 3): channels the last Survey projected to die get a warning
-  // glyph, so a player who read the water can see which lifelines to dredge or route
-  // around. Only YOUR reading shows — a bot's Survey is its own private forecast and
-  // must not light up your board (that looked like channels glowing for no reason). And
-  // only while it is current: the round it predicted and the next (when you act on it),
-  // never a stale read from further back.
-  const fcAge = g.forecast ? g.round - g.forecast.round : Infinity;
-  const forecastCrit = new Set(
-    g.forecast && g.forecast.by === HUMAN && fcAge >= 0 && fcAge <= 1
-      ? g.forecast.critical : [],
-  );
+  // With a hukay token in hand and Dredge pending, DEAD channels become dredge targets
+  // (the token can revive them) — highlight them so the player sees what the shovel can
+  // reach. Normal dredge can only touch living, non-full channels.
+  const humanHukay = g.players[HUMAN]?.hukay > 0;
+  const reviveArmed = pendingAction === 'dredge' && humanHukay;
 
   // --- channels
   const tolls = [];
@@ -316,7 +310,11 @@ export function drawBoard(ctx) {
     const k = chKey(a, b), d = g.depth[k];
     const A0 = NODE_BY_ID[a], B0 = NODE_BY_ID[b];
     const [A, B] = insetEnds(A0, B0, insetRadius(a), insetRadius(b));
-    const dredgeable = pendingAction === 'dredge' && d > 0 && d < TUNING.maxDepth;
+    // Normal dredge: living, not-yet-full channel. With a hukay token, a DEAD channel is
+    // dredgeable too — the token revives it.
+    const dredgeable = pendingAction === 'dredge'
+      && ((d > 0 && d < TUNING.maxDepth) || (d === 0 && reviveArmed));
+    const reviveTarget = d === 0 && reviveArmed;
 
     // Channels are TAPERED waterways, not constant-width strokes: narrow where they
     // leave the upstream node and wider as they near the sea, so the delta reads as
@@ -350,8 +348,11 @@ export function drawBoard(ctx) {
     const ownerName = owner !== null && owner !== undefined
       ? g.players[owner]?.name : null;
     const tip = d === 0
-      ? 'Dried up. This channel is gone for good — no boat can cross it and it '
-        + 'cannot be dredged back. Every route that used it has to go around.'
+      ? (reviveArmed
+        ? 'Dried up — but you hold a hukay. Dredge it to spend the shovel and revive '
+          + 'this channel back to depth 1. It is the only way to bring a dead bed back.'
+        : 'Dried up. This channel is gone for good — no boat can cross it, and only a '
+          + 'hukay (earned by surveying) can revive it. Every route that used it goes around.')
       : `Depth ${d}. A boat may cross any channel with depth 1 or more, and each `
         + `crossing wears it down by ${TUNING.siltPerShip}. At depth 0 it dies `
         + `permanently.`
@@ -400,14 +401,15 @@ export function drawBoard(ctx) {
       }));
     }
 
-    // Forecast warning: a dashed red pulse on a channel the water-read says may die
-    // this round. Distinct from the gold dredge-target pulse (it is a threat, not an
-    // invitation), and drawn on top so it survives the depth tint.
-    if (forecastCrit.has(k)) {
+    // Revive target: a dead channel your hukay can bring back. The normal gold pulse is
+    // sized off depth, which is ~nothing on a dead bed, so give it its own bright dashed
+    // pulse at a fixed width — it reads as "the shovel can reach this", an invitation, not
+    // the old red threat.
+    if (reviveTarget) {
       svg.appendChild(el('path', {
-        d: pathD, fill: 'none', stroke: 'var(--bad)',
-        'stroke-width': base * 1.8 + 0.3, 'stroke-linecap': 'round',
-        'stroke-dasharray': '1.4 1.2', opacity: 0.85, class: 'pulse',
+        d: pathD, fill: 'none', stroke: 'var(--gold)',
+        'stroke-width': 1.6, 'stroke-linecap': 'round',
+        'stroke-dasharray': '1.4 1.1', opacity: 0.9, class: 'pulse',
       }));
     }
 

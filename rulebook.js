@@ -149,9 +149,10 @@ export function pages(T) {
           <dd>Raise one channel by <b>${TUNING.dredgeAmount}</b> depth for
             <b>${TUNING.dredgeCoins}${money}</b>, up to the maximum of
             <b>${TUNING.maxDepth}</b>. You also <b>claim</b> the channel — see Tolls.
-            <span class="edge">A <b>dead</b> channel (depth 0) can never be reopened;
-            you can only ${A.dredge.name} water that still has depth 1 or more. Can't
-            afford the ${TUNING.dredgeCoins}${money}? The action does nothing.</span></dd>
+            <span class="edge">You can only ${A.dredge.name} water that still has depth 1
+            or more. A <b>dead</b> channel (depth 0) is gone — <em>unless</em> you spend a
+            <b>hukay</b> (see ${A.survey.name}) to revive it. Can't afford the
+            ${TUNING.dredgeCoins}${money}? The action does nothing.</span></dd>
 
           <dt>${A.build.name}<em>${A.build.gloss || 'build'}</em></dt>
           <dd>Place a ${X.station.name.toLowerCase()} on <b>any empty node your
@@ -181,13 +182,16 @@ export function pages(T) {
             blind-programming loss: plan a route with slack.</span></dd>
 
           <dt>${A.survey.name}<em>${A.survey.gloss || 'survey'}</em></dt>
-          <dd>Take <b>${TUNING.surveyCoins}${money}</b> and draw
-            <b>${TUNING.surveyDraw}</b> ${X.contract.name.toLowerCase()},
-            keeping <b>1</b>. The rest go back into the deck.
-            <span class="edge">Hand limit is <b>${TUNING.handLimit}</b>. If your hand
-            is already full, you still take the gold but the draw is discarded — so
-            clear a ${X.contract.name.toLowerCase()} before you ${A.survey.name}
-            again.</span></dd>
+          <dd>Take <b>${TUNING.surveyCoins}${money}</b>, draw
+            <b>${TUNING.surveyDraw}</b> ${X.contract.name.toLowerCase()} and keep
+            <b>1</b>, and earn a <b>hukay</b> (shovel) token.
+            <span class="edge">A <b>hukay</b> is a banked, consumable dredge charge (up to
+            <b>${TUNING.hukayMax}</b> at once). Spend one while dredging to dig a
+            <b>living</b> channel deep (<b>+${TUNING.dredgeAmount + TUNING.hukayDredgeBonus}</b>
+            instead of +${TUNING.dredgeAmount}), or to <b>revive a dead channel</b> back to
+            depth <b>${TUNING.hukayReviveTo}</b> — the only way to bring one back.
+            Hand limit is <b>${TUNING.handLimit}</b>; a full hand still takes the gold and
+            the token, but the drawn ${X.contract.name.toLowerCase()} is discarded.</span></dd>
         </dl>
         <p class="tip">You may program the same action twice — two
         ${A.ship.name}s, two ${A.dredge.name}s, whatever the round needs.</p>`,

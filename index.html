@@ -544,6 +544,16 @@
   .skipAim:hover{border-color:var(--gold);color:var(--ink)}
   .skipAim kbd{font-family:inherit;font-size:9.5px;opacity:.7;
     border:1px solid currentColor;border-radius:3px;padding:0 3px;margin-left:4px}
+  /* Hukay (shovel) arm toggle in the dredge aim bar. Off = quiet outline; on = gold. */
+  .hukayToggle{display:inline-block;margin:7px 6px 0 0;padding:5px 9px;min-height:28px;
+    border:1px solid rgba(255,238,205,.28);border-radius:5px;
+    background:rgba(18,14,9,.3);color:var(--dim);font-size:11px;
+    font-family:inherit;cursor:pointer;transition:.12s}
+  .hukayToggle:hover{border-color:var(--gold);color:var(--ink)}
+  .hukayToggle.on{border-color:var(--gold);color:var(--ink);
+    background:color-mix(in srgb, var(--gold) 20%, transparent);font-weight:600}
+  /* Hukay count badge in a player row — gold to read as an earned resource. */
+  .pl .st b.hukayStat{color:var(--gold)}
   /* Compact confirm bar: cost on one line, then a single row of buttons instead of
      three stacked full-width blocks that swallowed the board. */
   .confirmTxt{display:block;margin-bottom:8px;font-size:12px}

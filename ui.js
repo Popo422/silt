@@ -22,6 +22,7 @@ import {
   renderSurvey,
   renderFinalScore, renderActor,
   actionDescriptions, actionTips,
+  orderHintHTML, wastedBuildWarning,
 } from './panel.js';
 
 const HUMAN = 0;
@@ -38,6 +39,11 @@ let lastTutStep = null;       // last tutorial step id shown, to auto-reveal on 
 // path. Now the first click selects the origin and lights up every route from
 // it; the second click on a bay commits. shipFrom holds that in-between state.
 let shipFrom = null;
+// Hukay armed: while a dredge is pending and the human holds a token, they can arm the
+// shovel so the NEXT dredge on a living channel digs deep (+2). A dead channel always
+// spends the token regardless (it is the only way to revive it). Off by default — a
+// scarce token is never spent without an explicit choice. Cleared when the aim ends.
+let hukayArmed = false;
 // Survey's "keep 1 of 3": the three drawn contracts, held while the player picks.
 let surveyDraw = null;
 // A target clicked but not yet committed: { choice, title, detail }. Build carries
@@ -430,15 +436,7 @@ function render() {
 
   const orderHint = $('orderHint');
   orderHint.classList.toggle('hide', !!pendingAction);
-  if (!pendingAction) {
-    const shipW = T.actions.ship.name, dredgeW = T.actions.dredge.name;
-    orderHint.innerHTML = T.id === 'anod'
-      ? `Parehong kikilos ayon sa pagkakasunod. Ang <b>anod ay dumarating pagkatapos `
-        + `ng dalawa</b> — hindi mo mabubuksan sa ${dredgeW} ang sapàng gagamitin mo `
-        + `sa ${shipW} ngayong taon.`
-      : `Both actions resolve in the order you set. <b>Silt settles after both</b> — `
-        + `you can't ${shipW} a river and ${dredgeW} it back the same round.`;
-  }
+  if (!pendingAction) orderHint.innerHTML = orderHintHTML(T);
 
   // Player rows show each revealed program — a game with NO hidden information, so
   // what everyone committed IS the game. Slots stay face-down until commit (never
@@ -476,8 +474,10 @@ function render() {
   // A pending confirm replaces the aim hint with the Confirm / Pick-another / Skip
   // bar for the target just clicked.
   renderAimHint({ el: $, pendingAction: surveyDraw ? null : pendingAction, T,
-    stage: shipFrom ? 'dest' : 'origin', confirm: pendingConfirm, esc });
+    stage: shipFrom ? 'dest' : 'origin', confirm: pendingConfirm, esc,
+    hukay: g.players[HUMAN]?.hukay ?? 0, hukayArmed });
   $('skipAim')?.addEventListener('click', skipAim);
+  $('hukayToggle')?.addEventListener('click', () => { hukayArmed = !hukayArmed; render(); });
   $('confirmYes')?.addEventListener('click', confirmYes);
   $('confirmNo')?.addEventListener('click', confirmNo);
   renderSurvey({ el: $, draw: surveyDraw, T, tuning: TUNING, nodeLabel, esc, onKeep: keepSurvey });
@@ -607,18 +607,10 @@ function say(t, cls = '') {
 // A Build we can prove is unaffordable now, so its slot is wasted. Blind-commit
 // game: a Ship BEFORE the Build is left alone (its earnings may cover it, and
 // warning would leak the resolution the commit is meant to hide).
-function wastedBuildWarning() {
-  const me = g.players[HUMAN];
-  const buildSlot = program.indexOf('build');
-  if (buildSlot === -1 || (program[0] === 'ship' && buildSlot === 1)) return false;
-  return !buildTargets(g, me)
-    .some(n => me.coins >= buildCost(me) + buildStepCost(g, me, n));
-}
-
 // `warn` is on only for the button; the test/demo path can't answer a confirm().
 function commitProgram(warn) {
   if (!program[0] || !program[1] || pendingAction) return;
-  if (warn && wastedBuildWarning() && !confirm(
+  if (warn && wastedBuildWarning(g, HUMAN, program, { buildTargets, buildCost, buildStepCost }) && !confirm(
     'You cannot afford to settle anywhere your network reaches right now, '
     + 'so that action will be wasted. Commit anyway?')) return;
   g.players[HUMAN].program = [...program];
@@ -791,7 +783,15 @@ function wireBoard() {
     }
     // Only BUILD gets a confirm step — its cost varies with distance, so a misclick
     // could overspend. Dredge (fixed cost) and ship resolve on the click as before.
-    if (t.dataset.hit) { resolveHuman({ channel: t.dataset.hit }); return; }
+    if (t.dataset.hit) {
+      const k = t.dataset.hit;
+      // A dead channel can ONLY be dredged by spending the token (revive); a living one
+      // spends it only if the shovel was armed. Either way, only if a token is in hand.
+      const holds = (g.players[HUMAN]?.hukay ?? 0) > 0;
+      const useHukay = holds && (g.depth[k] === 0 || hukayArmed);
+      resolveHuman({ channel: k, useHukay });
+      return;
+    }
     const id = t.dataset.hitNode;
     const kind = t.dataset.hitKind;
     if (kind === 'build') confirmBuild(id);
@@ -828,6 +828,7 @@ async function resolveHuman(choice) {
   pendingAction = null;
   shipFrom = null;      // whichever way the ship resolved or was skipped, aim is over
   surveyDraw = null;    // and the survey picker, likewise
+  hukayArmed = false;   // the shovel disarms once the dredge fires (or any action does)
   execute(g, HUMAN, a, choice, queue.claimed);
   await flush({ actor: HUMAN, action: a });
   step();

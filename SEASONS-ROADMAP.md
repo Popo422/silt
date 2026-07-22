@@ -142,7 +142,31 @@ the braided map guards against. Not broken (bot completes + wins; flood revive o
 some), but if playtests strand bays, turn `cascadeDrop` (1) down. Tuning item, not a
 blocker.
 
-## Phase 3 — Tanáw forecasts  *(the legitimizer)*  ✅ CORE DONE
+## Phase 3 — Tanáw forecasts  →  SUPERSEDED by Hukay tokens  ⚠️ REPLACED
+
+**Superseded (post-ship).** The forecast was cut. Its fatal flaw: to warn "this channel
+may die", it assumed *every player ships every available route at once* — a worst-case
+union of hypotheticals, not a prediction. You can't forecast what free agents will
+freely choose, so the pink warning cried wolf and there was nothing actionable to do
+about it. `forecastCascade`, `g.forecast`, the board pink pulse, and the 7 forecast
+tests were all removed.
+
+**Replacement — Hukay (shovel) tokens.** Survey now banks a consumable dredge charge
+(cap `hukayMax` = 3). Spend one while dredging to (a) dig a LIVING channel deep
+(+2 via `hukayDredgeBonus`) or (b) **revive a DEAD channel** to depth 1
+(`hukayReviveTo`) — the only thing that reverses the game's one permanent loss
+("a channel that runs dry is gone for good"). This ties the two non-scoring actions
+together (Survey → Dredge) and gives river-repair a real power move + comeback tool,
+which is what the forecast reached for but couldn't deliver. Bots (ai.js heuristics +
+mcts candidate menu) both bank and spend tokens — prioritising a revive that reconnects
+a marooned station. UI: hukay count badge per player, an "arm the shovel" toggle in the
+dredge aim bar, dead channels become dredge targets (gold dashed pulse) only when armed.
+11 hukay tests cover grant+cap, both spend modes, and the guard rails (no token / full
+hand / can't-afford / maxDepth clamp). A `first-revive` demo beat points at the moment.
+
+Original Phase-3 write-up (the forecast, now removed) preserved below for history.
+
+---
 
 **Goal:** convert wet-season danger from dice into skill.
 

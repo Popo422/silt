@@ -58,6 +58,7 @@ function cloneGame(g) {
       done: p.done.map(c => ({ ...c })),
       delivered: copyMouthMap(p.delivered),
       pool: copyMouthMap(p.pool),
+      hukay: p.hukay ?? 0,
       program: [...p.program],
     })),
     deck: [...g.deck],
@@ -67,7 +68,6 @@ function cloneGame(g) {
     seed: g.seed,
     bayThisRound: { ...g.bayThisRound },
     bayBonus: g.bayBonus ? { ...g.bayBonus } : null,
-    forecast: g.forecast,   // read-only in rollouts; shared ref is fine
   };
 }
 
@@ -104,15 +104,30 @@ function topBuildTargets(g, p, n = 3) {
 
 function topDredgeTargets(g, p, n = 3) {
   if (p.coins < TUNING.dredgeCoins) return [];
-  const dt = dredgeTargets(g);
-  // Prefer channels adjacent to my stations (lifelines) then shallowest.
+  // Channels touching my stations, split by living (dredgeable normally) vs dead (only a
+  // hukay can touch them). The search decides via rollouts whether spending a token beats
+  // banking it — this just has to put both the plain and the hukay move on the menu.
   const mine = new Set();
+  const deadMine = new Set();
   for (const s of p.stations) {
-    for (const nb of g.out[s]) mine.add(chKey(s, nb));
-    for (const nb of g.inn[s]) mine.add(chKey(nb, s));
+    for (const nb of g.out[s]) { const k = chKey(s, nb); mine.add(k); if (g.depth[k] === 0) deadMine.add(k); }
+    for (const nb of g.inn[s]) { const k = chKey(nb, s); mine.add(k); if (g.depth[k] === 0) deadMine.add(k); }
   }
+  const dt = dredgeTargets(g);
   dt.sort((a, b) => (mine.has(b) - mine.has(a)) || (g.depth[a] - g.depth[b]));
-  return dt.slice(0, n).map(k => ({ action: 'dredge', choice: { channel: k }, key: `dredge:${k}` }));
+  const moves = dt.slice(0, n)
+    .map(k => ({ action: 'dredge', choice: { channel: k }, key: `dredge:${k}` }));
+  const hasToken = (p.hukay ?? 0) > 0;
+  if (hasToken) {
+    // Revive candidates: my dead channels (shallowest-adjacency already implied by "mine").
+    for (const k of deadMine) {
+      moves.push({ action: 'dredge', choice: { channel: k, useHukay: true }, key: `revive:${k}` });
+    }
+    // Power-dredge: the single most endangered living lifeline, +2 in one bite.
+    const brink = dt.find(k => mine.has(k) && g.depth[k] === 1);
+    if (brink) moves.push({ action: 'dredge', choice: { channel: brink, useHukay: true }, key: `power:${brink}` });
+  }
+  return moves;
 }
 
 const SURVEY_MOVE = { action: 'survey', choice: {}, key: 'survey' };
@@ -251,7 +266,13 @@ function reResolve(g, p, mv) {
   }
   if (mv.action === 'dredge') {
     const k = mv.choice.channel;
-    if (g.depth[k] > 0 && g.depth[k] < TUNING.maxDepth && p.coins >= TUNING.dredgeCoins) return { channel: k };
+    // A hukay move (revive or power-dredge) is only still legal if the token is still in
+    // hand; a dead channel is a valid target ONLY with the token.
+    const useHukay = !!(mv.choice.useHukay && (p.hukay ?? 0) > 0);
+    const affordable = p.coins >= TUNING.dredgeCoins;
+    const live = g.depth[k] > 0 && g.depth[k] < TUNING.maxDepth;
+    const dead = g.depth[k] === 0;
+    if (affordable && ((live) || (dead && useHukay))) return { channel: k, useHukay };
     const alt = topDredgeTargets(g, p, 1)[0];
     return alt ? alt.choice : null;
   }

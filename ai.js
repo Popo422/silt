@@ -177,8 +177,17 @@ export const STRATEGIES = {
     const contestBay = opts.some(o => bayControlValue(g, p, o.mouth, o.cubes) > 0);
     // A high-traffic channel I could claim to tax the leader's routes.
     const claims = claimTargets(g, p);
+    // Rescue: a station cut off from every bay. If I hold a hukay and a dead channel of
+    // mine would reconnect it, dredge (chooseTarget spends the token to revive). If I am
+    // stranded but tokenless, survey to bank one — a shovel is the only way back.
+    const canRevive = myReviveTargets(g, p).length > 0;
+    const strandedNow = p.stations.some(s => !MOUTHS.some(m => canReachMouth(g, s, m)));
 
     const prog = [];
+    // Reconnecting a marooned station is the highest-value move on the board — it undoes
+    // the game's one permanent loss. Do it before anything else.
+    if (strandedNow && canRevive && p.coins >= TUNING.dredgeCoins) prog.push('dredge');
+    else if (strandedNow && (p.hukay ?? 0) === 0 && roomToDraw) prog.push('survey');
     // When pressing, both slots go to the highest-swing plays: contest a bay, ship
     // for contract points, or tax a rival's route. Development can wait.
     if (pressing) {
@@ -252,6 +261,44 @@ function myFragileChannels(g, p) {
   return [...set];
 }
 
+// Dead channels touching one of p's stations — the only channels a hukay can revive.
+// Prioritised so that a revival which RECONNECTS a marooned station (one that cannot
+// currently reach any bay) comes first: that is the token's highest-value use, undoing
+// the game's one permanent loss. Others (a dead channel that just shortens a route) come
+// after. Returns [] if p holds no token or has nothing dead to revive.
+function myReviveTargets(g, p) {
+  if ((p.hukay ?? 0) <= 0) return [];
+  const dead = new Set();
+  for (const s of p.stations) {
+    for (const n of g.out[s]) { const k = chKey(s, n); if (g.depth[k] === 0) dead.add(k); }
+    for (const n of g.inn[s]) { const k = chKey(n, s); if (g.depth[k] === 0) dead.add(k); }
+  }
+  if (!dead.size) return [];
+  const stranded = p.stations.filter(s => !MOUTHS.some(m => canReachMouth(g, s, m)));
+  // A revive reconnects if, with that one channel alive, a stranded station reaches a bay.
+  const reconnects = (k) => {
+    if (!stranded.length) return false;
+    const saved = g.depth[k];
+    g.depth[k] = TUNING.hukayReviveTo;
+    const ok = stranded.some(s => MOUTHS.some(m => canReachMouth(g, s, m)));
+    g.depth[k] = saved;
+    return ok;
+  };
+  return [...dead].sort((a, b) => Number(reconnects(b)) - Number(reconnects(a)));
+}
+
+// Should the bot burn a hukay to power-dredge a LIVING channel (+2 instead of +1)?
+// Only when it holds a token, the channel is genuinely on the brink (depth 1 — one ship
+// from dying), and it is not sitting on a dead channel of its own that the token would be
+// better spent reviving. Cheap and conservative: tokens are scarce, and reviving a dead
+// lifeline is almost always worth more than one extra depth on a live one.
+function shouldPowerDredge(g, p, k) {
+  if ((p.hukay ?? 0) <= 0) return false;
+  if (g.depth[k] !== 1) return false;                 // save the big bite for the brink
+  if (myReviveTargets(g, p).length) return false;     // a revive would use it better
+  return true;
+}
+
 // How much would shipping `good` to `mouth` advance one of p's contracts? Returns
 // a rough value: high when it completes or nearly completes a real contract at the
 // bay that contract names, zero when it helps no contract. This is what turns a
@@ -316,15 +363,23 @@ export function chooseTarget(g, p, action, strat) {
     }
     case 'dredge': {
       if (p.coins < TUNING.dredgeCoins) return null;
+      // Best use of a hukay: revive a dead channel. myReviveTargets returns [] unless the
+      // bot holds a token AND has a dead channel of its own to bring back, and puts a
+      // revival that RECONNECTS a marooned station first. Spend the token to revive when
+      // a station is stranded (the top target is then the reconnecting one) — otherwise
+      // bank it rather than waste it un-stranding nothing.
+      const revive = myReviveTargets(g, p);
+      const stranded = p.stations.some(s => !MOUTHS.some(m => canReachMouth(g, s, m)));
+      if (revive.length && stranded) return { channel: revive[0], useHukay: true };
       if (strat === 'tollkeeper') {
         const c = claimTargets(g, p);
-        if (c.length) return { channel: c[0] };
+        if (c.length) return { channel: c[0], useHukay: shouldPowerDredge(g, p, c[0]) };
       }
       const mine = myFragileChannels(g, p);
       const pool = mine.length ? mine : dredgeTargets(g);
       if (!pool.length) return null;
       pool.sort((a, b) => g.depth[a] - g.depth[b]);   // most endangered first
-      return { channel: pool[0] };
+      return { channel: pool[0], useHukay: shouldPowerDredge(g, p, pool[0]) };
     }
     case 'build': {
       // Only nodes the player can actually afford now (base + distance premium).

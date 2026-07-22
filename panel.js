@@ -45,6 +45,30 @@ export function renderContracts({ el, player, T, tuning, nodeLabel, esc }) {
 // whole round: "what did everyone just do" is the main input to planning the
 // next one. Gating on the resolution queue instead made the programs vanish the
 // instant the last action resolved, which is exactly when you want to look.
+// The turn-order reminder under the board: silt settles only after BOTH actions, so
+// you cannot ship a channel and dredge it back the same round. Pure theme copy — it
+// belongs with the other panel text, not inside render().
+export function orderHintHTML(T) {
+  const shipW = T.actions.ship.name, dredgeW = T.actions.dredge.name;
+  return T.id === 'anod'
+    ? `Parehong kikilos ayon sa pagkakasunod. Ang <b>anod ay dumarating pagkatapos `
+      + `ng dalawa</b> — hindi mo mabubuksan sa ${dredgeW} ang sapàng gagamitin mo `
+      + `sa ${shipW} ngayong taon.`
+    : `Both actions resolve in the order you set. <b>Silt settles after both</b> — `
+      + `you can't ${shipW} a river and ${dredgeW} it back the same round.`;
+}
+
+// Would the committed program waste a Build — no reachable node the player can afford?
+// The engine reads (buildTargets/buildCost/buildStepCost) arrive as args so this file
+// stays engine-free like the rest of the panel helpers. A ship-then-build is exempt:
+// the ship may free the gold the build needs.
+export function wastedBuildWarning(g, human, program, { buildTargets, buildCost, buildStepCost }) {
+  const me = g.players[human];
+  const buildSlot = program.indexOf('build');
+  if (buildSlot === -1 || (program[0] === 'ship' && buildSlot === 1)) return false;
+  return !buildTargets(g, me).some(n => me.coins >= buildCost(me) + buildStepCost(g, me, n));
+}
+
 export function renderPlayers({ el, players, human, revealed, colors, T, tuning, icon, ico, esc }) {
   el('pls').innerHTML = players.map((p, i) => `
     <div class="pl ${i === human ? 'me' : ''}">
@@ -69,6 +93,10 @@ export function renderPlayers({ el, players, human, revealed, colors, T, tuning,
              T.id === 'anod' ? 'balangay' : 'sites'}</i></b>
         <b data-tip="${esc('Contracts fulfilled. These are most of the final score.')}"
            data-tip-title="Contracts done">${p.done.length}<i>done</i></b>
+        ${(p.hukay ?? 0) > 0 ? `<b class="hukayStat"
+           data-tip-title="Hukay (shovel) tokens"
+           data-tip="${esc('Earned by surveying. Spend one while dredging to dig a living channel deep (+2) or revive a dead one back to depth 1.')}"
+           >🔨${p.hukay}<i>hukay</i></b>` : ''}
       </span>
     </div>`).join('');
 }
@@ -289,7 +317,7 @@ export function confirmMeta({ g, human, T, nodeLabel, choice, buildCost, buildSt
   };
 }
 
-export function renderAimHint({ el, pendingAction, T, stage, confirm, esc }) {
+export function renderAimHint({ el, pendingAction, T, stage, confirm, esc, hukay = 0, hukayArmed = false }) {
   const hint = el('hint');
   if (!pendingAction) { hint.style.display = 'none'; return; }
   hint.style.display = 'block';
@@ -316,7 +344,19 @@ export function renderAimHint({ el, pendingAction, T, stage, confirm, esc }) {
     return;
   }
 
+  // When dredging with a hukay in hand, offer the shovel toggle: armed, the next dredge
+  // on a LIVING channel digs deep (+2). A DEAD channel always spends the token to revive
+  // it (nothing else can), armed or not — so the toggle only governs the live-channel case.
+  const showHukay = pendingAction === 'dredge' && hukay > 0;
+  const hukayBtn = showHukay
+    ? `<button id="hukayToggle" class="hukayToggle${hukayArmed ? ' on' : ''}"
+              data-tip-title="Hukay (${hukay} banked)"
+              data-tip="Arm the shovel: your next dredge on a LIVING channel digs deep (+2 instead of +1) and spends one hukay. A DEAD channel always spends a hukay to revive it, armed or not.">
+        🔨 ${hukayArmed ? 'Hukay ON' : 'Use hukay'}
+      </button>`
+    : '';
   hint.innerHTML = `<span class="aimTxt"></span>
+    ${hukayBtn}
     <button id="skipAim" class="skipAim"
             data-tip="Decline this action without a target. It is already in play, so
                       the slot is spent either way — this just declines to use it.">
